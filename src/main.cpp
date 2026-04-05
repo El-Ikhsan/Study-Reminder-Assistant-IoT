@@ -40,10 +40,11 @@ void setup()
     // 4. Inisialisasi WebSocket (Hanya jalan kalau WiFi konek DAN sudah di-claim)
     if (isRuntimeReady())
     {
-        initWebSocket();
         initAudio();
-
         playAudioLocal("/hitaini.mp3");
+
+        // Mulai audio startup dulu agar frame awal tidak berebut resource dengan handshake WS.
+        initWebSocket();
     }
 }
 

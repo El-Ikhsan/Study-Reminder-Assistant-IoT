@@ -2,12 +2,15 @@
 #include "config.h"
 #include <Audio.h> // Library ESP32-audioI2S
 #include <LittleFS.h>
+#include <string.h>
 
 namespace
 {
     // Buat object audio di dalam anonymous namespace agar terisolasi
     Audio audio;
     bool isLittleFsReady = false;
+    bool isStreamReady = false;
+    bool isSyncwordReady = false;
 }
 
 void initAudio()
@@ -70,7 +73,23 @@ void playAudioLocal(const char *path)
     }
 
     audio.stopSong();
+    isStreamReady = false;
+    isSyncwordReady = false;
     audio.connecttoFS(LittleFS, path);
+
+    // Tunggu decoder menemukan syncword agar startup tidak patah di awal.
+    const unsigned long warmupStartMs = millis();
+    while (!isSyncwordReady && (millis() - warmupStartMs < 2000))
+    {
+        audio.loop();
+        delay(5);
+    }
+
+    if (!isSyncwordReady)
+    {
+        Serial.println("[AUDIO] Warning: syncword belum terdeteksi saat warmup startup.");
+    }
+
     Serial.printf("[AUDIO] Memutar MP3 Lokal: %s\n", path);
 }
 
@@ -118,6 +137,19 @@ void stopAudio()
 
 void audio_info(const char *info)
 {
+    if (info != nullptr)
+    {
+        if (strstr(info, "stream ready") != nullptr)
+        {
+            isStreamReady = true;
+        }
+
+        if (strstr(info, "syncword found") != nullptr)
+        {
+            isSyncwordReady = true;
+        }
+    }
+
     Serial.print("[AUDIO INFO] ");
     Serial.println(info);
 }

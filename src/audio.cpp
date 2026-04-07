@@ -46,7 +46,7 @@ void initAudio()
                     RinchanConfig::Audio::I2S_LRC,
                     RinchanConfig::Audio::I2S_DOUT);
 
-    audio.setVolume(21);
+    setVolumePercent(RinchanConfig::Audio::DEFAULT_VOLUME);
 
     Serial.println("[AUDIO] MAX98357A siap.");
 }

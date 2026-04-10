@@ -11,6 +11,7 @@
 #include "display.h"
 #include "sound_manager.h"
 #include <TFT_eSPI.h>
+#include "wakenet.h"
 
 namespace
 {
@@ -50,7 +51,7 @@ void setup()
 
     initAudio();
     setVolumePercent(getSavedVolume()); // Set volume speaker dari hasil memori
-
+                                        // Inisialisasi Telinga AI (WakeNet9)
     initSensors();
 
     // ==========================================
@@ -119,7 +120,7 @@ void setup()
 
         // Mulai WS paling akhir
         initWebSocket();
-
+        initWakeNet();
         // Aktifkan timer pembersih layar (hilang setelah 3 detik)
         bootMessageTimer = millis();
         clearBootMessage = true;
@@ -170,7 +171,8 @@ void loop()
             else
             {
                 SensorData currentData = readAllSensors();
-                // sendTelemetryWS(currentData);
+                (void)currentData;
+                sendTelemetryWS(currentData);
 
                 // Opsional: Bikin Rinchan berkedip setiap kali ngirim data sensor!
                 // Ini bikin alatnya terasa hidup tanpa harus memanggil layar terlalu sering.
@@ -180,4 +182,5 @@ void loop()
             isPingNext = !isPingNext;
         }
     }
+    delay(1);
 }

@@ -138,14 +138,21 @@ void drawEmoji(Emotion emoji)
 volatile bool cancelCurrentDialog = false;
 TFT_eSprite dialogSprite = TFT_eSprite(&tft);
 
-
+void forceClearDialog()
+{
+    cancelCurrentDialog = true;
+}
 
 void showDialogWidget(String text)
 {
+    // ✨ AWAL: Matikan library MP3 secara resmi
+    stopAudio();
+    i2s_zero_dma_buffer((i2s_port_t)I2S_NUM_0);
+    delay(10);
+
     cancelCurrentDialog = false;
     currentWidget = WIDGET_DIALOG;
 
-    // 1. SIAPKAN KANVAS RAM
     dialogSprite.createSprite(320, 90);
     dialogSprite.fillSprite(TFT_BLACK);
     dialogSprite.fillRoundRect(5, 5, 310, 80, 5, tft.color565(20, 20, 30));
@@ -156,14 +163,12 @@ void showDialogWidget(String text)
     int cX = 15, cY = 15;
     dialogSprite.setCursor(cX, cY);
 
-    int charCount = 0; // Penghitung khusus huruf untuk bunyi (2 huruf 1 suara)
-
+    int charCount = 0;
     for (int i = 0; i < text.length(); i++)
     {
         if (cancelCurrentDialog)
             break;
 
-        // Pindah baris
         if (cX > 290 && text[i] == ' ')
         {
             cX = 15;
@@ -174,32 +179,26 @@ void showDialogWidget(String text)
         {
             dialogSprite.print(text[i]);
             cX += 12;
-
-            // Jika bukan spasi, hitung!
-            if (text[i] != ' ')
-                charCount++;
         }
 
-        // Tembakkan buffer visual (RAM) ke Layar (Fisik)
+        charCount++;
         dialogSprite.pushSprite(0, 150);
 
-        // ✨ PENYELARASAN HARDWARE MUTLAK ✨
-        // Tentukan apakah putaran ini berbunyi atau senyap (1 suara per 2 huruf)
         bool makeSound = (text[i] != ' ' && charCount % 2 == 1);
-
-        // Fungsi ini memblokir CPU sinkron dengan jam kartu suara
         playTypingSync(makeSound);
     }
 
-    // ✨ THE HANDBRAKE (REM TANGAN I2S) ✨
-    // Begitu huruf terakhir tercetak, paksa sisa antrean di Pipa DMA menjadi hening (0)!
-    // Ini membunuh 2-3 ketukan hantu yang sering membayangi di akhir kalimat.
+    // ✨ THE SILENT FLUSHER (PEMBUNUH NOISE) ✨
+    // Tembakkan 2 blok suara "Hening" (0 Volt) secara manual agar amplifier rileks
+    playTypingSync(false);
+    playTypingSync(false);
+
+    // Setelah amplifier tenang, baru kita bersihkan buffer secara paksa
     i2s_zero_dma_buffer((i2s_port_t)I2S_NUM_0);
 
-    // Bersihkan RAM Video
     dialogSprite.deleteSprite();
 
-    // Jeda baca 2 detik setelah teks selesai
+    // Jeda baca teks
     if (!cancelCurrentDialog)
     {
         unsigned long readStart = millis();

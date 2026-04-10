@@ -23,6 +23,11 @@ enum WidgetMode
     WIDGET_POMODORO
 };
 
+// ✨ BENDERA INTERUPSI GLOBAL
+// Kata kunci 'extern' memberitahu compiler bahwa variabel ini
+// fisiknya ada di file display.cpp, tapi file lain boleh mengaksesnya.
+extern volatile bool cancelCurrentDialog;
+
 // Fungsi UI
 void initDisplay();
 void setDisplayBrightness(int percent);
@@ -31,3 +36,4 @@ void drawEmoji(Emotion emoji);
 void showDialogWidget(String text);
 void updatePomodoroWidget(int min, int sec, bool isBreak);
 void clearWidget();
+void forceClearDialog();

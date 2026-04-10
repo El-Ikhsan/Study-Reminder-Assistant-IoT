@@ -59,6 +59,18 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
         Serial.println("[WS] Terjadi Error pada WebSocket!");
         wsConnected = false;
         break;
+
+    case WStype_BIN:
+    case WStype_FRAGMENT_TEXT_START:
+    case WStype_FRAGMENT_BIN_START:
+    case WStype_FRAGMENT:
+    case WStype_FRAGMENT_FIN:
+    case WStype_PING:
+    case WStype_PONG:
+        break;
+
+    default:
+        break;
     }
 }
 

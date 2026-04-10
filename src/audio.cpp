@@ -17,7 +17,6 @@ namespace
     bool isTypingSfxBusy = false;
     unsigned long typingSfxStartMs = 0;
     constexpr unsigned long TYPING_SFX_BUSY_TIMEOUT_MS = 90;
-    unsigned long lastCodeClickMs = 0;
     int16_t typingPcmCache[512]; // 16ms audio @ 16kHz (Stereo)
     bool isPcmCached = false;
     constexpr int SYNC_DELAY_MS = 60;
@@ -81,20 +80,25 @@ void playTypingCodeClick()
         {
             float t = (float)i / 16000.0f;
             float p = (float)i / 256.0f;
-            float attack = (p < 0.20f) ? (p / 0.20f) : 1.0f;
+
+            // Attack lebih lambat agar tidak terlalu "menusuk" telinga
+            float attack = (p < 0.40f) ? (p / 0.40f) : 1.0f;
             float decay = 1.0f - p;
-            float env = attack * decay * decay;
-            float s = sinf(twoPi * 1250.0f * t) * env;
-            int16_t v = (int16_t)(s * 4000.0f);
+            float env = attack * decay;
+
+            // ✨ PITCH: Turunkan dari 1250.0f menjadi 600.0f (Lebih berat/kalem)
+            float s = sinf(twoPi * 600.0f * t) * env;
+
+            // ✨ VOLUME: Turunkan dari 4000.0f menjadi 1000.0f (Lebih pelan)
+            int16_t v = (int16_t)(s * 1000.0f);
 
             typingPcmCache[i * 2] = v;     // Kiri
             typingPcmCache[i * 2 + 1] = v; // Kanan
         }
-        isPcmCached = true;
+        isPcmCached = true; // Simpan ke cache agar I2S tidak perlu menghitung ulang
     }
 
     size_t written = 0;
-    // Tembak 16ms langsung! Pipa I2S akan selalu kosong saat huruf berikutnya datang.
     i2s_write((i2s_port_t)I2S_NUM_0, (const char *)typingPcmCache, sizeof(typingPcmCache), &written, portMAX_DELAY);
 }
 

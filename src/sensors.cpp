@@ -10,6 +10,8 @@ namespace
     BH1750 lightMeter;
 }
 
+extern volatile int currentNoiseLevel;
+
 void initSensors()
 {
     Wire.begin(RinchanConfig::Pins::I2C_SDA, RinchanConfig::Pins::I2C_SCL);
@@ -40,14 +42,8 @@ void initSensors()
 SensorData readAllSensors()
 {
     SensorData data;
-
-    // Baca sensor asli
     data.temperature = bmp.readTemperature();
     data.lightLux = lightMeter.readLightLevel();
-
-    // MOCK: Noise Level (Belum pakai I2S Mic, jadi pakai random 30-80)
-    // Nanti logika I2S RMS ditaruh di sini
-    data.noiseLevel = random(30, 80);
-
+    data.noiseLevel = currentNoiseLevel; // Ambil nilai asli dari kalkulasi Mikrofon INMP441
     return data;
 }

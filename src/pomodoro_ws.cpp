@@ -1,6 +1,9 @@
 #include "pomodoro_ws.h"
 #include "websocket.h"
 #include "sensors.h"
+#include "display.h"
+#include "hw_manager.h"
+#include "sound_manager.h"
 #include <ArduinoJson.h>
 
 namespace
@@ -12,34 +15,26 @@ namespace
     constexpr int DEFAULT_TARGET_CYCLES = 1;
     constexpr int DEFAULT_SENSOR_INTERVAL_SEC = 60;
 
-    // ==========================================
-    // 🧠 STATE MANAGEMENT (TERISOLASI)
-    // ==========================================
-    // Kita bungkus semua variabel ke dalam satu Object (Struct)
     struct PomodoroState
     {
         bool isRunning = false;
         String sessionId = "";
 
-        // Data Dinamis dari Dashboard
         String condition = "normal";
         int focusDurationMin = DEFAULT_FOCUS_DURATION_MIN;
         int restDurationMin = DEFAULT_REST_DURATION_MIN;
         int targetCycles = DEFAULT_TARGET_CYCLES;
         unsigned long sensorIntervalMs = DEFAULT_SENSOR_INTERVAL_MS;
 
-        // Status Berjalan
         String mode = "fokus";
         String phase = "awal";
         int currentCycle = 1;
 
-        // Variabel Timer
         unsigned long timeRemainingSec = 0;
         unsigned long durationTotalSec = 0;
         unsigned long lastTimerTick = 0;
         unsigned long lastSensorTick = 0;
 
-        // Flag Laporan
         bool reportedAwal = false;
         bool reportedTengah = false;
         bool reportedAkhir = false;
@@ -47,10 +42,32 @@ namespace
 
     PomodoroState state;
 
-    // ==========================================
-    // 🔄 FUNGSI INTERNAL PENGATUR SIKLUS
-    // ==========================================
-    // Gunakan 'static' pada fungsi internal agar tidak bentrok dengan file lain
+    // ✨ HELPER: Penerjemah String JSON ke Enum Layar
+    Emotion parseEmotionString(String emoStr)
+    {
+        emoStr.toUpperCase(); // Pastikan huruf besar semua untuk pencocokan
+        if (emoStr == "HOT")
+            return EMOTION_HOT;
+        if (emoStr == "COLD")
+            return EMOTION_COLD;
+        if (emoStr == "NOISY")
+            return EMOTION_NOISY;
+        if (emoStr == "SLEEPY")
+            return EMOTION_SLEEPY;
+        if (emoStr == "SURPRISED")
+            return EMOTION_SURPRISED;
+        if (emoStr == "DARK")
+            return EMOTION_DARK;
+        if (emoStr == "SAD")
+            return EMOTION_SAD;
+        if (emoStr == "LISTENING")
+            return EMOTION_LISTENING;
+        if (emoStr == "UNCOMFORTABLE")
+            return EMOTION_UNCOMFORTABLE;
+
+        return EMOTION_IDLE; // Wajah default jika string tidak dikenali
+    }
+
     void startTimerForMode(const String &mode, int durationMin)
     {
         state.mode = mode;
@@ -63,9 +80,19 @@ namespace
 
         Serial.printf("\n[⏳] Memulai Mode: %s | Durasi: %d menit | Siklus: %d/%d\n",
                       state.mode.c_str(), durationMin, state.currentCycle, state.targetCycles);
+
+        // ✨ TRIGGER SUARA SESI
+        if (mode == "fokus")
+        {
+            playRinchanSound(SND_POMO_START);
+        }
+        else
+        {
+            playRinchanSound(SND_POMO_SWITCH);
+        }
     }
 
-    void sendPhaseReport(const String &mode, float durationMin, float remainingMin, const String &condition); // Deklarasi maju
+    void sendPhaseReport(const String &mode, float durationMin, float remainingMin, const String &condition);
 
     void switchPomodoroMode()
     {
@@ -84,6 +111,8 @@ namespace
                 Serial.println("[🎉] SEMUA SIKLUS POMODORO SELESAI!");
                 state.isRunning = false;
 
+                playRinchanSound(SND_POMO_STOP); // ✨ Suara Selesai Total
+
                 if (wsConnected && !state.sessionId.isEmpty())
                 {
                     JsonDocument doc;
@@ -95,6 +124,11 @@ namespace
                 }
 
                 state.sessionId = "";
+
+                // Kembalikan wajah ke normal setelah selesai
+                forceClearDialog();
+                drawEmoji(EMOTION_IDLE);
+                showDialogWidget("Kerja Bagus, Shimarin!");
             }
             else
             {
@@ -103,9 +137,6 @@ namespace
         }
     }
 
-    // ==========================================
-    // 📤 PENGIRIM PESAN KE SERVER
-    // ==========================================
     void sendSensorReportForAI(float temp, float lux, int noise)
     {
         if (!wsConnected || !state.isRunning || state.sessionId.isEmpty())
@@ -153,9 +184,6 @@ namespace
 
 } // namespace
 
-// ==========================================
-// 📥 1. ROUTER PESAN MASUK DARI SERVER (Public)
-// ==========================================
 void handleIncomingPomodoroMessage(const String &msg)
 {
     JsonDocument doc;
@@ -184,10 +212,12 @@ void handleIncomingPomodoroMessage(const String &msg)
         int intervalSec = payload["sensorIntervalSec"] | DEFAULT_SENSOR_INTERVAL_SEC;
         state.sensorIntervalMs = intervalSec * 1000;
 
-        Serial.printf("Setup: Kondisi %s, Interval AI %d detik.\n", state.condition.c_str(), intervalSec);
-
         state.isRunning = true;
         state.currentCycle = 1;
+
+        // ✨ Kosongkan dialog jika AI masih ngomong, ubah wajah ke mode fokus
+        forceClearDialog();
+        drawEmoji(EMOTION_LISTENING);
 
         startTimerForMode("fokus", state.focusDurationMin);
     }
@@ -196,20 +226,55 @@ void handleIncomingPomodoroMessage(const String &msg)
         Serial.println("\n[⏹️] Perintah STOP diterima! Menghentikan Timer.");
         state.isRunning = false;
         state.sessionId = "";
+
+        // ✨ Eksekusi UI Batal
+        playRinchanSound(SND_POMO_CANCEL);
+        forceClearDialog();
+        drawEmoji(EMOTION_SAD);
+        showDialogWidget("Yah, dibatalkan...");
     }
     else if (type == "AI_RESPONSE")
     {
         Serial.println("\n[🤖] Balasan AI (Rin-chan) Masuk!");
-        String emotion = payload["emotion"].as<String>();
+        String emotionStr = payload["emotion"].as<String>();
         String text = payload["text"].as<String>();
-        Serial.println("Ekspresi: " + emotion);
-        Serial.println("Pesan: " + text);
+
+        Serial.printf("Ekspresi: %s | Pesan: %s\n", emotionStr.c_str(), text.c_str());
+
+        // ✨ EKSEKUSI ANIMASI WAJAH DAN TEKS
+        forceClearDialog();                        // Matikan ngetik lama jika ada
+        drawEmoji(parseEmotionString(emotionStr)); // Ubah wajah
+        showDialogWidget(text);                    // Mulai ngetik baru
+    }
+    else if (type == "CMD_SET_BRIGHTNESS")
+    {
+        int newBrightness = payload["value"].as<int>();
+        Serial.printf("\n[💡] Perintah ubah Brightness menjadi: %d%%\n", newBrightness);
+
+        // ✨ THE MAGIC: Langsung ubah layar & simpan ke NVS!
+        updateBrightness(newBrightness);
+
+        // ✨ Feedback UI: Hentikan ngetik lama, tampilkan info
+        forceClearDialog();
+        drawEmoji(EMOTION_SURPRISED);
+        showDialogWidget("Kecerahan: " + String(newBrightness) + "%");
+    }
+    else if (type == "CMD_SET_VOLUME")
+    {
+        int newVolume = payload["value"].as<int>();
+        Serial.printf("\n[🔊] Perintah ubah Volume menjadi: %d%%\n", newVolume);
+
+        // ✨ THE MAGIC: Langsung ubah MAX98357A & simpan ke NVS!
+        updateVolume(newVolume);
+
+        // ✨ Feedback Audio & UI: Beri suara tes agar user tahu sekeras apa
+        forceClearDialog();
+        drawEmoji(EMOTION_LISTENING);
+        playRinchanSound(SND_AI_NOTIFY); // Bunyi "Ting!" untuk tes
+        showDialogWidget("Volume Audio: " + String(newVolume) + "%");
     }
 }
 
-// ==========================================
-// ⚙️ 2. MESIN TIMER UTAMA (Public)
-// ==========================================
 void pomodoroLoop()
 {
     if (!state.isRunning)
@@ -217,7 +282,7 @@ void pomodoroLoop()
 
     unsigned long currentMillis = millis();
 
-    // A. LOGIKA PENGHITUNG WAKTU (Jalan Setiap 1 Detik)
+    // A. LOGIKA PENGHITUNG WAKTU
     if (currentMillis - state.lastTimerTick >= ONE_SECOND_MS)
     {
         state.lastTimerTick = currentMillis;
@@ -225,6 +290,11 @@ void pomodoroLoop()
         if (state.timeRemainingSec > 0)
         {
             state.timeRemainingSec--;
+
+            // ✨ UPDATE TIMER KE LAYAR SETIAP DETIK
+            int minRemaining = state.timeRemainingSec / 60;
+            int secRemaining = state.timeRemainingSec % 60;
+            updatePomodoroWidget(minRemaining, secRemaining, (state.mode == "istirahat"));
 
             float ratio = (float)state.timeRemainingSec / (float)state.durationTotalSec;
             float durationMinFloat = state.durationTotalSec / 60.0;

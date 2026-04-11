@@ -1,4 +1,4 @@
-#include "sdkconfig.h" // ✨ INI KUNCI SAKTINYA!
+#include "sdkconfig.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include "../managed_components/espressif__esp-sr/include/esp32s3/esp_afe_sr_iface.h"

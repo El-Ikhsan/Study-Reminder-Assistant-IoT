@@ -2,7 +2,7 @@
 #define WEBSOCKET_H
 
 #include <Arduino.h>
-#include "sensors.h" // Butuh tipe data SensorData
+#include "sensor/sensors.h" // Butuh tipe data SensorData
 
 void initWebSocket();
 void wsLoop();

@@ -1,7 +1,7 @@
 #include "websocket.h"
 #include "config.h"
-#include "auth_manager.h"
-#include "pomodoro_ws.h" // <--- IMPORT ROUTER BARU
+#include "network/auth.h"
+#include "features/pomodoro.h" // <--- IMPORT ROUTER BARU
 #include <WebSocketsClient.h>
 #include <ArduinoJson.h>
 

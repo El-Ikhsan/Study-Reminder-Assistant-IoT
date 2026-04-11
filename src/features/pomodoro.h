@@ -1,6 +1,5 @@
-#ifndef POMODORO_WS_H
-#define POMODORO_WS_H
-
+#ifndef POMODORO_H
+#define POMODORO_H
 #include <Arduino.h>
 
 // Hanya 2 fungsi ini yang diizinkan diakses oleh file lain (Public)

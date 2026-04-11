@@ -6,8 +6,8 @@
 #include "esp_log.h"
 #include "model_path.h"
 #include "esp_wn_models.h"
-#include "display.h"
-#include "sound_manager.h"
+#include "ui/display.h"
+#include "audio/sound_manager.h"
 #include "config.h"
 // Fungsi jembatan C
 extern "C" afe_config_t get_default_afe_config();

@@ -1,7 +1,7 @@
 #include "hw_manager.h"
 #include "config.h"
-#include "audio.h"   // Untuk fungsi setVolumePercent()
-#include "display.h" // Untuk fungsi setDisplayBrightness()
+#include "audio/audio.h" // Untuk fungsi setVolumePercent()
+#include "ui/display.h"  // Untuk fungsi setDisplayBrightness()
 #include <Preferences.h>
 
 namespace

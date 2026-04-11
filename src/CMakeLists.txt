@@ -1,2 +1,6 @@
-FILE(GLOB_RECURSE app_sources ${CMAKE_SOURCE_DIR}/src/*.*)
-idf_component_register(SRCS ${app_sources})
+# src/CMakeLists.txt
+# Mencari semua file C/CPP di semua sub-folder secara otomatis
+FILE(GLOB_RECURSE app_sources ${CMAKE_CURRENT_SOURCE_DIR}/*.c ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
+
+idf_component_register(SRCS ${app_sources}
+                       INCLUDE_DIRS "." "../include")

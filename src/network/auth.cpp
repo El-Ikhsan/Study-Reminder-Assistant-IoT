@@ -1,4 +1,4 @@
-#include "auth_manager.h"
+#include "auth.h"
 #include "config.h"
 #include <Preferences.h>
 #include <HTTPClient.h>

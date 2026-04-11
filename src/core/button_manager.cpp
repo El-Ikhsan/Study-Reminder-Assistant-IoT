@@ -1,7 +1,7 @@
 #include "button_manager.h"
 #include "config.h"
-#include "auth_manager.h"
-#include "wifi_manager.h"
+#include "network/auth.h"
+#include "network/wifi.h"
 #include <Arduino.h>
 #include "driver/rtc_io.h" // ✨ WAJIB UNTUK MENGUNCI PULL-UP SAAT DEEP SLEEP
 

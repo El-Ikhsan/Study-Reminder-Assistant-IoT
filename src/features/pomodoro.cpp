@@ -1,9 +1,9 @@
-#include "pomodoro_ws.h"
-#include "websocket.h"
-#include "sensors.h"
-#include "display.h"
-#include "hw_manager.h"
-#include "sound_manager.h"
+#include "pomodoro.h"
+#include "network/websocket.h"
+#include "sensor/sensors.h"
+#include "ui/display.h"
+#include "core/hw_manager.h"
+#include "audio/sound_manager.h"
 #include <ArduinoJson.h>
 
 namespace

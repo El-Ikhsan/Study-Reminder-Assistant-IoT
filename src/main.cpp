@@ -1,17 +1,17 @@
 #include <Arduino.h>
 #include "config.h"
-#include "wifi_manager.h"
-#include "auth_manager.h"
-#include "hw_manager.h"
-#include "sensors.h"
-#include "websocket.h"
-#include "pomodoro_ws.h"
-#include "button_manager.h"
-#include "audio.h"
-#include "display.h"
-#include "sound_manager.h"
+#include "network/wifi.h"
+#include "network/auth.h"
+#include "core/hw_manager.h"
+#include "sensor/sensors.h"
+#include "network/websocket.h"
+#include "features/pomodoro.h"
+#include "core/button_manager.h"
+#include "audio/audio.h"
+#include "ui/display.h"
+#include "audio/sound_manager.h"
 #include <TFT_eSPI.h>
-#include "wakenet.h"
+#include "voice_recognition/wakenet.h"
 
 namespace
 {

@@ -1,9 +1,9 @@
 #include "display.h"
-#include "sound_manager.h"
+#include "audio/sound_manager.h"
 #include <TFT_eSPI.h>
 #include <LittleFS.h>
 #include <TJpg_Decoder.h>
-#include "audio.h"
+#include "audio/audio.h"
 #include <driver/i2s.h>
 
 // Gunakan pin PWM untuk backlight layarmu yang terhubung ke Transistor

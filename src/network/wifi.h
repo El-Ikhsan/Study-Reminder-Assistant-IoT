@@ -1,5 +1,5 @@
-#ifndef WIFI_MANAGER_H
-#define WIFI_MANAGER_H
+#ifndef WIFI_H
+#define WIFI_H
 
 #include <Arduino.h>
 

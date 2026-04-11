@@ -15,6 +15,7 @@ enum Emotion
     EMOTION_LISTENING,    // Mendengarkan (Wakenet aktif)
     EMOTION_UNCOMFORTABLE // Tidak nyaman
 };
+Emotion parseEmotionString(String emoStr);
 
 enum WidgetMode
 {

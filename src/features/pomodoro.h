@@ -1,9 +1,7 @@
-#ifndef POMODORO_H
-#define POMODORO_H
+#pragma once
 #include <Arduino.h>
+#include <ArduinoJson.h> // Wajib ada untuk JsonObject
 
-// Hanya 2 fungsi ini yang diizinkan diakses oleh file lain (Public)
-void handleIncomingPomodoroMessage(const String &msg);
+// Fungsi khusus untuk menerima perintah Pomodoro saja
+void pomodoro_processCommand(const String &type, JsonObject payload);
 void pomodoroLoop();
-
-#endif

@@ -42,32 +42,6 @@ namespace
 
     PomodoroState state;
 
-    // ✨ HELPER: Penerjemah String JSON ke Enum Layar
-    Emotion parseEmotionString(String emoStr)
-    {
-        emoStr.toUpperCase(); // Pastikan huruf besar semua untuk pencocokan
-        if (emoStr == "HOT")
-            return EMOTION_HOT;
-        if (emoStr == "COLD")
-            return EMOTION_COLD;
-        if (emoStr == "NOISY")
-            return EMOTION_NOISY;
-        if (emoStr == "SLEEPY")
-            return EMOTION_SLEEPY;
-        if (emoStr == "SURPRISED")
-            return EMOTION_SURPRISED;
-        if (emoStr == "DARK")
-            return EMOTION_DARK;
-        if (emoStr == "SAD")
-            return EMOTION_SAD;
-        if (emoStr == "LISTENING")
-            return EMOTION_LISTENING;
-        if (emoStr == "UNCOMFORTABLE")
-            return EMOTION_UNCOMFORTABLE;
-
-        return EMOTION_IDLE; // Wajah default jika string tidak dikenali
-    }
-
     void startTimerForMode(const String &mode, int durationMin)
     {
         state.mode = mode;
@@ -184,21 +158,8 @@ namespace
 
 } // namespace
 
-void handleIncomingPomodoroMessage(const String &msg)
+void pomodoro_processCommand(const String &type, JsonObject payload)
 {
-    JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, msg);
-    if (error)
-        return;
-
-    String type = doc["type"].as<String>();
-    if (type == "null" || type == "")
-    {
-        type = doc["command"].as<String>();
-    }
-
-    JsonObject payload = doc["payload"];
-
     if (type == "CMD_START_POMODORO")
     {
         Serial.println("\n[▶️] Perintah START diterima dari Dashboard!");
@@ -215,10 +176,8 @@ void handleIncomingPomodoroMessage(const String &msg)
         state.isRunning = true;
         state.currentCycle = 1;
 
-        // ✨ Kosongkan dialog jika AI masih ngomong, ubah wajah ke mode fokus
         forceClearDialog();
         drawEmoji(EMOTION_LISTENING);
-
         startTimerForMode("fokus", state.focusDurationMin);
     }
     else if (type == "CMD_STOP_POMODORO")
@@ -227,51 +186,10 @@ void handleIncomingPomodoroMessage(const String &msg)
         state.isRunning = false;
         state.sessionId = "";
 
-        // ✨ Eksekusi UI Batal
         playRinchanSound(SND_POMO_CANCEL);
         forceClearDialog();
         drawEmoji(EMOTION_SAD);
         showDialogWidget("Yah, dibatalkan...");
-    }
-    else if (type == "AI_RESPONSE")
-    {
-        Serial.println("\n[🤖] Balasan AI (Rin-chan) Masuk!");
-        String emotionStr = payload["emotion"].as<String>();
-        String text = payload["text"].as<String>();
-
-        Serial.printf("Ekspresi: %s | Pesan: %s\n", emotionStr.c_str(), text.c_str());
-
-        // ✨ EKSEKUSI ANIMASI WAJAH DAN TEKS
-        forceClearDialog();                        // Matikan ngetik lama jika ada
-        drawEmoji(parseEmotionString(emotionStr)); // Ubah wajah
-        showDialogWidget(text);                    // Mulai ngetik baru
-    }
-    else if (type == "CMD_SET_BRIGHTNESS")
-    {
-        int newBrightness = payload["value"].as<int>();
-        Serial.printf("\n[💡] Perintah ubah Brightness menjadi: %d%%\n", newBrightness);
-
-        // ✨ THE MAGIC: Langsung ubah layar & simpan ke NVS!
-        updateBrightness(newBrightness);
-
-        // ✨ Feedback UI: Hentikan ngetik lama, tampilkan info
-        forceClearDialog();
-        drawEmoji(EMOTION_SURPRISED);
-        showDialogWidget("Kecerahan: " + String(newBrightness) + "%");
-    }
-    else if (type == "CMD_SET_VOLUME")
-    {
-        int newVolume = payload["value"].as<int>();
-        Serial.printf("\n[🔊] Perintah ubah Volume menjadi: %d%%\n", newVolume);
-
-        // ✨ THE MAGIC: Langsung ubah MAX98357A & simpan ke NVS!
-        updateVolume(newVolume);
-
-        // ✨ Feedback Audio & UI: Beri suara tes agar user tahu sekeras apa
-        forceClearDialog();
-        drawEmoji(EMOTION_LISTENING);
-        playRinchanSound(SND_AI_NOTIFY); // Bunyi "Ting!" untuk tes
-        showDialogWidget("Volume Audio: " + String(newVolume) + "%");
     }
 }
 

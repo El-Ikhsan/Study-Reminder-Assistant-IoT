@@ -1,7 +1,11 @@
 #include "websocket.h"
 #include "config.h"
 #include "network/auth.h"
-#include "features/pomodoro.h" // <--- IMPORT ROUTER BARU
+#include "features/pomodoro.h"
+#include "ui/display.h"
+#include "core/hw_manager.h"
+#include "audio/sound_manager.h"
+
 #include <WebSocketsClient.h>
 #include <ArduinoJson.h>
 
@@ -12,6 +16,68 @@ namespace
 }
 
 bool wsConnected = false;
+
+void routeIncomingMessage(const String &msg)
+{
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, msg);
+    if (error)
+        return;
+
+    String type = doc["type"].as<String>();
+    if (type == "null" || type == "")
+    {
+        type = doc["command"].as<String>();
+    }
+    JsonObject payload = doc["payload"];
+
+    // 1. KIRIM KE DEPARTEMEN POMODORO
+    if (type.indexOf("POMODORO") >= 0)
+    {
+        pomodoro_processCommand(type, payload);
+    }
+
+    // 2. KIRIM KE DEPARTEMEN AI & LAYAR
+    else if (type == "AI_RESPONSE")
+    {
+        Serial.println("\n[🤖] Balasan AI (Rin-chan) Masuk!");
+        String emotionStr = payload["emotion"].as<String>();
+        String text = payload["text"].as<String>();
+
+        forceClearDialog();
+        drawEmoji(parseEmotionString(emotionStr)); // Panggil fungsi dari display.h
+        showDialogWidget(text);
+    }
+
+    // 3. KIRIM KE DEPARTEMEN HARDWARE (BRIGHTNESS)
+    else if (type == "CMD_SET_BRIGHTNESS")
+    {
+        int newBrightness = payload["value"].as<int>();
+        Serial.printf("\n[💡] Perintah ubah Brightness menjadi: %d%%\n", newBrightness);
+        updateBrightness(newBrightness);
+
+        forceClearDialog();
+        drawEmoji(EMOTION_SURPRISED);
+        showDialogWidget("Kecerahan: " + String(newBrightness) + "%");
+    }
+
+    // 4. KIRIM KE DEPARTEMEN HARDWARE (VOLUME)
+    else if (type == "CMD_SET_VOLUME")
+    {
+        int newVolume = payload["value"].as<int>();
+        Serial.printf("\n[🔊] Perintah ubah Volume menjadi: %d%%\n", newVolume);
+        updateVolume(newVolume);
+
+        forceClearDialog();
+        drawEmoji(EMOTION_LISTENING);
+        playRinchanSound(SND_AI_NOTIFY);
+        showDialogWidget("Volume Audio: " + String(newVolume) + "%");
+    }
+    else
+    {
+        Serial.printf("[WS] Tipe perintah tidak dikenal: %s\n", type.c_str());
+    }
+}
 
 void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
 {
@@ -51,8 +117,8 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
             return;
         }
 
-        // 🔥 LEMPAR PESAN KE FILE pomodoro_ws.cpp 🔥
-        handleIncomingPomodoroMessage(msg);
+        // 🔥 LEMPAR KE PUSAT ROUTER 🔥
+        routeIncomingMessage(msg);
         break;
     }
     case WStype_ERROR:
@@ -133,5 +199,5 @@ void sendTelemetryWS(const SensorData &data)
 
     webSocket.sendTXT(jsonString);
     // Print di-comment biar terminal tidak terlalu penuh tiap 15 detik
-    // Serial.println("[WS] -> Telemetri Terkirim: " + jsonString);
+    Serial.println("[WS] -> Telemetri Terkirim: " + jsonString);
 }

@@ -249,3 +249,27 @@ void clearWidget()
     tft.fillRect(0, 150, 320, 90, TFT_BLACK);
     currentWidget = WIDGET_NONE;
 }
+
+Emotion parseEmotionString(String emoStr)
+{
+    emoStr.toUpperCase();
+    if (emoStr == "HOT")
+        return EMOTION_HOT;
+    if (emoStr == "COLD")
+        return EMOTION_COLD;
+    if (emoStr == "NOISY")
+        return EMOTION_NOISY;
+    if (emoStr == "SLEEPY")
+        return EMOTION_SLEEPY;
+    if (emoStr == "SURPRISED")
+        return EMOTION_SURPRISED;
+    if (emoStr == "DARK")
+        return EMOTION_DARK;
+    if (emoStr == "SAD")
+        return EMOTION_SAD;
+    if (emoStr == "LISTENING")
+        return EMOTION_LISTENING;
+    if (emoStr == "UNCOMFORTABLE")
+        return EMOTION_UNCOMFORTABLE;
+    return EMOTION_IDLE;
+}

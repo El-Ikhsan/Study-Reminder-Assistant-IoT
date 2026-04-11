@@ -97,39 +97,30 @@ void audio_detect_task(void *arg)
         {
             Serial.println("\n[🔥] WAKE WORD DETECTED: ALEXA!\n");
 
-            // 1. TRIGGER AUDIO LEBIH DULU
+            // 1. MASUKKAN KASET MP3
+            // (Main loop di background akan otomatis mulai memutarnya)
             playRinchanSound(SND_AI_NOTIFY);
 
-            // 2. TUNGGU DECODER AUDIO LOADING (Kompensasi Latency Dinaikkan!)
-            // Naikkan ke 150ms agar LittleFS punya waktu mengekstrak WAV dan memompa I2S
-            unsigned long waitStart = millis();
-            while (millis() - waitStart < 150)
-            {
-                audioLoop();
-                delay(1);
-            }
+            // 2. JEDA LATENCY DECODER MP3 (150ms)
+            // Cukup gunakan delay standar. DILARANG memanggil audioLoop() di sini!
+            delay(150);
 
-            // 3. BARU MUNCULKAN MIMIK
-            // Di titik 150ms ini, suara dipastikan sudah memukul speaker.
-            // Mimik akan terasa benar-benar sinkron!
+            // 3. MUNCULKAN MIMIK LISTENING
+            // Akan terasa sinkron karena MP3 sedang berbunyi di background
             drawEmoji(EMOTION_LISTENING);
 
-            waitStart = millis();
-            while (millis() - waitStart < 300)
-            {
-                audioLoop();
-                delay(1);
-            }
+            // 4. JEDA PENYELESAIAN DURASI MP3 (200ms)
+            delay(200);
 
-            // 5. BERSIHKAN DENGAN HALUS
-            // Karena lagu dipastikan sudah selesai, memanggil stopAudio di sini sangat AMAN
-            stopAudio();
-
-            // Paksa amplifier memakan "0 Volt" agar senyap total tanpa bunyi 'pop'
-            i2s_zero_dma_buffer((i2s_port_t)I2S_NUM_0);
-
+            // 5. BERSIHKAN LAYAR
+            // Biarkan Audio Library mati sendiri secara natural tanpa stopAudio()
             forceClearDialog();
+
+            // Selesai!
         }
+
+        // Sedikit jeda agar task tidak memonopoli CPU secara absolut
+        delay(10);
     }
 }
 

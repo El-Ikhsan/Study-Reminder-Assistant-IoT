@@ -22,7 +22,7 @@ inline void playRinchanSound(SoundEvent event)
         playAudioSFX("/booting.wav");
         break;
     case SND_AI_NOTIFY:
-        playAudioSFX("/ai_notify.wav");
+        playAudioSFX("/ai_notify.mp3");
         break;
     case SND_TEXT_BLIP:
         // Blip sintetis dari kode (tanpa file), lebih stabil untuk efek typing.

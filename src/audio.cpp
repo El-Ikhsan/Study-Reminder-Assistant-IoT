@@ -144,58 +144,34 @@ void playAudioSFX(const char *path)
     if (!isLittleFsReady)
         return;
     if (!LittleFS.exists(path))
-        return;
-
-    const bool isTypingSfx = (strcmp(path, "/typing_1.wav") == 0) ||
-                             (strcmp(path, "/typing_2.wav") == 0);
-
-    // Cegah trigger terlalu rapat agar SFX pendek tidak terus terpotong.
-    const unsigned long now = millis();
-    // typing_2.wav dari log berdurasi ~95ms, jadi cooldown harus di atas itu agar tidak kepotong.
-    const unsigned long minRetriggerMs = isTypingSfx ? 120UL : 45UL;
-    if (now - lastSfxStartMs < minRetriggerMs)
-        return;
-
-    // Untuk typing, jangan retrigger saat blip sebelumnya masih aktif.
-    if (isTypingSfx)
     {
-        if (isTypingSfxBusy && (now - typingSfxStartMs < TYPING_SFX_BUSY_TIMEOUT_MS))
-            return;
-
-        // Timeout fail-safe jika callback EOF terlewat.
-        if (isTypingSfxBusy && (now - typingSfxStartMs >= TYPING_SFX_BUSY_TIMEOUT_MS))
-            isTypingSfxBusy = false;
+        Serial.printf("[AUDIO] File SFX tidak ditemukan: %s\n", path);
+        return;
     }
 
-    // 2. Untuk SFX umum: hentikan dulu audio aktif. Untuk typing pendek: biarkan natural.
-    if (!isTypingSfx)
-        audio.stopSong();
+    // 2. Cooldown Anti-Spam (Cegah tumpukan perintah beruntun)
+    const unsigned long now = millis();
+    if (now - lastSfxStartMs < 50UL)
+        return; // Cooldown 50ms
 
-    // Reset flag (opsional, tapi bagus untuk mencegah bug library)
+    // 3. Hentikan suara yang sedang aktif dengan cepat
+    audio.stopSong();
+
+    // Reset flag status
     isStreamReady = false;
     isSyncwordReady = false;
 
-    // 3. LANGSUNG PUTAR TANPA WARMUP!
+    // 4. Langsung eksekusi pemutaran
     audio.connecttoFS(LittleFS, path);
     lastSfxStartMs = now;
 
-    if (isTypingSfx)
-    {
-        isTypingSfxBusy = true;
-        typingSfxStartMs = now;
-    }
-
-    // Beri kesempatan decoder mulai output supaya suara tidak hanya terdengar di trigger terakhir.
+    // Beri sedikit "tendangan" awal agar decoder MP3/WAV langsung memompa buffer I2S
     const unsigned long primeStart = millis();
-    const unsigned long primeMs = isTypingSfx ? 0UL : 8UL;
-    while (millis() - primeStart < primeMs)
+    while (millis() - primeStart < 10UL)
     {
         audio.loop();
         delay(1);
     }
-
-    // (Boleh di-comment jika Serial Monitor terlalu penuh karena ngetik)
-    // Serial.printf("[AUDIO SFX] Tembakan Cepat: %s\n", path);
 }
 
 void playAudioLocal(const char *path)

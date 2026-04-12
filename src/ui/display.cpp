@@ -9,6 +9,30 @@
 // Gunakan pin PWM untuk backlight layarmu yang terhubung ke Transistor
 #define TFT_BL_PIN 39
 
+Emotion parseEmotionString(String emoStr)
+{
+    emoStr.toUpperCase();
+    if (emoStr == "HOT")
+        return EMOTION_HOT;
+    if (emoStr == "COLD")
+        return EMOTION_COLD;
+    if (emoStr == "NOISY")
+        return EMOTION_NOISY;
+    if (emoStr == "SLEEPY")
+        return EMOTION_SLEEPY;
+    if (emoStr == "SURPRISED")
+        return EMOTION_SURPRISED;
+    if (emoStr == "DARK")
+        return EMOTION_DARK;
+    if (emoStr == "SAD")
+        return EMOTION_SAD;
+    if (emoStr == "LISTENING")
+        return EMOTION_LISTENING;
+    if (emoStr == "UNCOMFORTABLE")
+        return EMOTION_UNCOMFORTABLE;
+    return EMOTION_IDLE;
+}
+
 namespace
 {
     TFT_eSPI tft = TFT_eSPI();
@@ -160,6 +184,7 @@ void showDialogWidget(String text)
 
     dialogSprite.setTextColor(TFT_WHITE);
     dialogSprite.setTextSize(2);
+
     int cX = 15, cY = 15;
     dialogSprite.setCursor(cX, cY);
 
@@ -169,107 +194,138 @@ void showDialogWidget(String text)
         if (cancelCurrentDialog)
             break;
 
-        if (cX > 290 && text[i] == ' ')
+        // ✨ LOGIKA SMART WORD-WRAP (Anti Terpotong) ✨
+        if (text[i] != ' ' && (i == 0 || text[i - 1] == ' '))
         {
-            cX = 15;
-            cY += 25;
-            dialogSprite.setCursor(cX, cY);
+            int wordWidth = 0;
+            for (int j = i; j < text.length() && text[j] != ' '; j++)
+            {
+                wordWidth += 12; // Asumsi 1 huruf = 12 pixel
+            }
+
+            if (cX + wordWidth > 300)
+            {
+                cX = 15;
+                cY += 25; // Turun 1 baris
+
+                // ✨ LOGIKA PAGINASI (HALAMAN BARU JIKA KOTAK PENUH) ✨
+                // Karena tinggi kotak 90px, baris 1 (Y:15), baris 2 (Y:40), baris 3 (Y:65).
+                // Jika Y melebihi 65, berarti kotak sudah penuh!
+                if (cY > 65)
+                {
+                    // 1. Jeda sebentar agar user bisa baca "Halaman 1"
+                    unsigned long pageWait = millis();
+                    while (millis() - pageWait < 2500)
+                    { // Jeda 2.5 detik per halaman
+                        if (cancelCurrentDialog)
+                            break;
+                        delay(10);
+                    }
+                    if (cancelCurrentDialog)
+                        break;
+
+                    // 2. Bersihkan kotak (Gambar ulang background & border)
+                    dialogSprite.fillSprite(TFT_BLACK);
+                    dialogSprite.fillRoundRect(5, 5, 310, 80, 5, tft.color565(20, 20, 30));
+                    dialogSprite.drawRoundRect(5, 5, 310, 80, 5, TFT_CYAN);
+                    dialogSprite.setTextColor(TFT_WHITE);
+
+                    // 3. Kembalikan kursor ke baris paling atas
+                    cX = 15;
+                    cY = 15;
+                }
+
+                dialogSprite.setCursor(cX, cY);
+            }
         }
-        else
+
+        // Abaikan spasi jika dia terdorong ke awal baris baru
+        if (text[i] == ' ' && cX == 15)
         {
-            dialogSprite.print(text[i]);
-            cX += 12;
+            continue;
         }
+
+        // Cetak hurufnya
+        dialogSprite.print(text[i]);
+        cX += 12;
 
         charCount++;
         dialogSprite.pushSprite(0, 150);
 
+        // Bunyikan suara ngetik
         bool makeSound = (text[i] != ' ' && charCount % 2 == 1);
         playTypingSync(makeSound);
     }
 
     // ✨ THE SILENT FLUSHER (PEMBUNUH NOISE) ✨
-    // Tembakkan 2 blok suara "Hening" (0 Volt) secara manual agar amplifier rileks
     playTypingSync(false);
     playTypingSync(false);
-
-    // Setelah amplifier tenang, baru kita bersihkan buffer secara paksa
     i2s_zero_dma_buffer((i2s_port_t)I2S_NUM_0);
 
-    dialogSprite.deleteSprite();
-
-    // Jeda baca teks
+    // ✨ JEDA BACA AKHIR (LEBIH LAMA) ✨
     if (!cancelCurrentDialog)
     {
         unsigned long readStart = millis();
-        while (millis() - readStart < 2000)
+        // Beri waktu 5 DETIK agar user santai membacanya
+        while (millis() - readStart < 5000)
         {
             if (cancelCurrentDialog)
                 break;
             delay(10);
         }
     }
+
+    // Hapus kotak dari memori dan layar
+    dialogSprite.deleteSprite();
+    if (!cancelCurrentDialog)
+    {
+        clearWidget(); // Bersihkan layar bawah menjadi hitam
+    }
 }
 // ==========================================
 // 3. AREA BAWAH: TIMER POMODORO
 // ==========================================
-void updatePomodoroWidget(int min, int sec, bool isBreak)
-{
-    if (currentWidget != WIDGET_POMODORO)
-    {
-        tft.fillRect(0, 150, 320, 90, TFT_BLACK);
-        currentWidget = WIDGET_POMODORO;
-    }
-
-    // Bersihkan hanya blok angka
-    tft.fillRect(10, 150, 300, 90, TFT_BLACK);
-
-    // Label Mode Pomodoro
-    tft.setTextSize(2);
-    if (isBreak)
-    {
-        tft.setTextColor(TFT_GREEN);
-        tft.drawCentreString("ISTIRAHAT", 160, 155, 2);
-    }
-    else
-    {
-        tft.setTextColor(TFT_ORANGE);
-        tft.drawCentreString("FOKUS KERJA", 160, 155, 2);
-    }
-
-    // Angka Timer
-    char timeStr[6];
-    sprintf(timeStr, "%02d:%02d", min, sec);
-    tft.setTextColor(TFT_WHITE);
-    tft.drawCentreString(timeStr, 160, 180, 6);
-}
-
 void clearWidget()
 {
     tft.fillRect(0, 150, 320, 90, TFT_BLACK);
     currentWidget = WIDGET_NONE;
 }
 
-Emotion parseEmotionString(String emoStr)
+void updatePomodoroWidget(int min, int sec, bool isBreak)
 {
-    emoStr.toUpperCase();
-    if (emoStr == "HOT")
-        return EMOTION_HOT;
-    if (emoStr == "COLD")
-        return EMOTION_COLD;
-    if (emoStr == "NOISY")
-        return EMOTION_NOISY;
-    if (emoStr == "SLEEPY")
-        return EMOTION_SLEEPY;
-    if (emoStr == "SURPRISED")
-        return EMOTION_SURPRISED;
-    if (emoStr == "DARK")
-        return EMOTION_DARK;
-    if (emoStr == "SAD")
-        return EMOTION_SAD;
-    if (emoStr == "LISTENING")
-        return EMOTION_LISTENING;
-    if (emoStr == "UNCOMFORTABLE")
-        return EMOTION_UNCOMFORTABLE;
-    return EMOTION_IDLE;
+    // 1. Jika Rinchan sedang bicara (Dialog aktif), JANGAN gambar timer.
+    if (currentWidget == WIDGET_DIALOG)
+        return;
+
+    // 2. Jika baru pindah dari mode lain, bersihkan dulu area bawah
+    if (currentWidget != WIDGET_POMODORO)
+    {
+        tft.fillRect(0, 150, 320, 90, TFT_BLACK);
+        currentWidget = WIDGET_POMODORO;
+    }
+
+    // 3. Gambar Frame Widget (Hanya jika perlu agar tidak flicker)
+    // tft.drawRoundRect(5, 150, 310, 85, 5, TFT_DARKGREY);
+
+    // 4. Bersihkan area angka saja
+    tft.fillRect(10, 155, 300, 80, TFT_BLACK);
+
+    // 5. Render Label Mode
+    tft.setTextSize(2);
+    if (isBreak)
+    {
+        tft.setTextColor(TFT_GREEN);
+        tft.drawCentreString("MODE: ISTIRAHAT", 160, 160, 2);
+    }
+    else
+    {
+        tft.setTextColor(TFT_ORANGE);
+        tft.drawCentreString("MODE: FOKUS KERJA", 160, 160, 2);
+    }
+
+    // 6. Render Angka Timer MM:SS (Font Size 6 agar besar)
+    char timeStr[6];
+    sprintf(timeStr, "%02d:%02d", min, sec);
+    tft.setTextColor(TFT_WHITE);
+    tft.drawCentreString(timeStr, 160, 185, 4);
 }

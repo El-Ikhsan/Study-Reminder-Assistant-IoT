@@ -86,7 +86,7 @@ namespace
                 state.isRunning = false;
 
                 playRinchanSound(SND_POMO_STOP); // ✨ Suara Selesai Total
-
+                clearWidget();
                 if (wsConnected && !state.sessionId.isEmpty())
                 {
                     JsonDocument doc;
@@ -185,8 +185,8 @@ void pomodoro_processCommand(const String &type, JsonObject payload)
         Serial.println("\n[⏹️] Perintah STOP diterima! Menghentikan Timer.");
         state.isRunning = false;
         state.sessionId = "";
-
         playRinchanSound(SND_POMO_CANCEL);
+        clearWidget();
         forceClearDialog();
         drawEmoji(EMOTION_SAD);
         showDialogWidget("Yah, dibatalkan...");
@@ -199,21 +199,36 @@ void pomodoroLoop()
         return;
 
     unsigned long currentMillis = millis();
+    unsigned long elapsed = currentMillis - state.lastTimerTick;
 
-    // A. LOGIKA PENGHITUNG WAKTU
-    if (currentMillis - state.lastTimerTick >= ONE_SECOND_MS)
+    // A. LOGIKA PENGHITUNG WAKTU CERDAS (CATCH-UP TIME)
+    if (elapsed >= ONE_SECOND_MS)
     {
-        state.lastTimerTick = currentMillis;
+        // 1. Hitung berapa detik yang terlewat (misal: CPU tertahan 5 detik, maka missedSeconds = 5)
+        int missedSeconds = elapsed / ONE_SECOND_MS;
+
+        // 2. Majukan patokan waktu sesuai kelipatan detik yang terlewat
+        state.lastTimerTick += (missedSeconds * ONE_SECOND_MS);
 
         if (state.timeRemainingSec > 0)
         {
-            state.timeRemainingSec--;
+            // 3. Kurangi sisa waktu borongan (bukan cuma 1 detik)
+            if (state.timeRemainingSec >= missedSeconds)
+            {
+                state.timeRemainingSec -= missedSeconds;
+            }
+            else
+            {
+                state.timeRemainingSec = 0; // Cegah angka minus
+            }
 
-            // ✨ UPDATE TIMER KE LAYAR SETIAP DETIK
+            // ✨ UPDATE TIMER KE LAYAR
+            // (Akan otomatis di-skip oleh display.cpp kalau layar sedang dipakai ngobrol)
             int minRemaining = state.timeRemainingSec / 60;
             int secRemaining = state.timeRemainingSec % 60;
             updatePomodoroWidget(minRemaining, secRemaining, (state.mode == "istirahat"));
 
+            // Hitung rasio untuk laporan AI
             float ratio = (float)state.timeRemainingSec / (float)state.durationTotalSec;
             float durationMinFloat = state.durationTotalSec / 60.0;
             float remainingMinFloat = state.timeRemainingSec / 60.0;

@@ -8,6 +8,8 @@
 #include "esp_wn_models.h"
 #include "ui/display.h"
 #include "audio/sound_manager.h"
+#include "audio/audio.h"
+#include "features/general.h"
 #include "config.h"
 // Fungsi jembatan C
 extern "C" afe_config_t get_default_afe_config();
@@ -93,34 +95,54 @@ void audio_detect_task(void *arg)
     while (true)
     {
         afe_fetch_result_t *res = afe_handle->fetch(afe_data);
-        if (res && res->wakeup_state == WAKENET_DETECTED)
+
+        if (res)
         {
-            Serial.println("\n[🔥] WAKE WORD DETECTED: ALEXA!\n");
+            // ==========================================
+            // 1. JIKA WAKE WORD TERDETEKSI
+            // ==========================================
+            if (res->wakeup_state == WAKENET_DETECTED)
+            {
+                Serial.println("\n[🔥] WAKE WORD DETECTED: ALEXA!\n");
 
-            // 1. MASUKKAN KASET MP3
-            // (Main loop di background akan otomatis mulai memutarnya)
-            playRinchanSound(SND_AI_NOTIFY);
+                // 1. MASUKKAN KASET (Mulai Pemanasan Mesin MP3)
+                playRinchanSound(SND_AI_NOTIFY);
 
-            // 2. JEDA LATENCY DECODER MP3 (150ms)
-            // Cukup gunakan delay standar. DILARANG memanggil audioLoop() di sini!
-            delay(150);
+                // 2. ⚡ SMART WAIT DENGAN FUNGSI JEMBATAN ⚡
+                unsigned long waitTimeout = millis();
 
-            // 3. MUNCULKAN MIMIK LISTENING
-            // Akan terasa sinkron karena MP3 sedang berbunyi di background
-            drawEmoji(EMOTION_LISTENING);
+                // Gunakan fungsi getAudioFilePos() yang baru kita buat!
+                while (getAudioFilePos() == 0 && (millis() - waitTimeout < 400))
+                {
+                    delay(1);
+                }
 
-            // 4. JEDA PENYELESAIAN DURASI MP3 (200ms)
-            delay(200);
+                delay(20);
 
-            // 5. BERSIHKAN LAYAR
-            // Biarkan Audio Library mati sendiri secara natural tanpa stopAudio()
-            forceClearDialog();
+                // 3. RENDER MIMIK
+                drawEmoji(EMOTION_LISTENING);
 
-            // Selesai!
+                // 4. JEDA PENYELESAIAN DURASI AUDIO
+                // Durasi file ai_notify.mp3 milikmu adalah ~200ms.
+                // Karena kita sudah membuang waktu untuk menunggu di atas, kita cukup tunggu sisanya.
+                delay(150);
+
+                forceClearDialog();
+
+                // 5. TRIGGER MULAI REKAM SUARA
+                voiceChat_startRecording();
+            }
+
+            // ==========================================
+            // 2. PENGIRIMAN DATA MIC (VOICE CHAT)
+            // ==========================================
+            if (voiceChat_isRecording())
+            {
+                voiceChat_feedAudio(res->data, res->data_size, res->vad_state);
+            }
         }
 
-        // Sedikit jeda agar task tidak memonopoli CPU secara absolut
-        delay(10);
+        delay(1);
     }
 }
 

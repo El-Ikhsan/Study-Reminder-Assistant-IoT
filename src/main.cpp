@@ -172,7 +172,7 @@ void loop()
             {
                 SensorData currentData = readAllSensors();
                 (void)currentData;
-                sendTelemetryWS(currentData);
+                // sendTelemetryWS(currentData);
 
                 // Opsional: Bikin Rinchan berkedip setiap kali ngirim data sensor!
                 // Ini bikin alatnya terasa hidup tanpa harus memanggil layar terlalu sering.

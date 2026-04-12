@@ -296,3 +296,8 @@ void audio_eof_mp3(const char *info)
     Serial.print("[AUDIO END] Selesai memutar: ");
     Serial.println(info);
 }
+
+uint32_t getAudioFilePos()
+{
+    return audio.getFilePos();
+}

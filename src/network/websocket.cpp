@@ -8,11 +8,14 @@
 
 #include <WebSocketsClient.h>
 #include <ArduinoJson.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 namespace
 {
     WebSocketsClient webSocket;
     unsigned int wsFailCount = 0;
+    SemaphoreHandle_t wsMutex = NULL;
 }
 
 bool wsConnected = false;
@@ -43,6 +46,7 @@ void routeIncomingMessage(const String &msg)
         Serial.println("\n[🤖] Balasan AI (Rin-chan) Masuk!");
         String emotionStr = payload["emotion"].as<String>();
         String text = payload["text"].as<String>();
+        Serial.printf("[AI] Emosi: %s | Teks: %s\n", emotionStr.c_str(), text.c_str());
 
         forceClearDialog();
         drawEmoji(parseEmotionString(emotionStr)); // Panggil fungsi dari display.h
@@ -142,6 +146,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
 
 void initWebSocket()
 {
+    wsMutex = xSemaphoreCreateMutex();
     Serial.println("[WS] Menyiapkan URL dan Token...");
     String token = getApiKey();
     String fullUrl = String(RinchanConfig::Backend::WS_BASE_URL) + "?token=" + token;
@@ -159,45 +164,71 @@ void initWebSocket()
 
 void wsLoop()
 {
-    webSocket.loop();
+    // Coba pasang gembok (tunggu 0ms). Kalau berhasil, jalankan loop.
+    if (wsMutex != NULL && xSemaphoreTake(wsMutex, 0) == pdTRUE)
+    {
+        webSocket.loop();
+        xSemaphoreGive(wsMutex); // Lepas gembok
+    }
 }
 
 void sendPingWS()
 {
-    if (!wsConnected)
+    if (!wsConnected || wsMutex == NULL)
         return;
-    Serial.println("[WS] -> Mengirim: ping");
-    webSocket.sendTXT("ping");
+
+    // Tunggu sampai gembok terbuka (portMAX_DELAY), baru kirim data
+    if (xSemaphoreTake(wsMutex, portMAX_DELAY) == pdTRUE)
+    {
+        Serial.println("[WS] -> Mengirim: ping");
+        webSocket.sendTXT("ping");
+        xSemaphoreGive(wsMutex);
+    }
 }
 
-// ✨ HELPER BARU: Dipanggil dari file lain untuk mengirim string JSON
 void sendRawWS(const String &msg)
 {
-    if (!wsConnected)
+    if (!wsConnected || wsMutex == NULL)
         return;
-    webSocket.sendTXT(msg.c_str());
+
+    if (xSemaphoreTake(wsMutex, portMAX_DELAY) == pdTRUE)
+    {
+        webSocket.sendTXT(msg.c_str());
+        xSemaphoreGive(wsMutex);
+    }
 }
 
+void sendAudioChunkWS(const uint8_t *payload, size_t length)
+{
+    if (!wsConnected || wsMutex == NULL)
+        return;
+
+    // Saat mengirim suara mic, pastikan Main Loop tidak sedang menyela
+    if (xSemaphoreTake(wsMutex, portMAX_DELAY) == pdTRUE)
+    {
+        webSocket.sendBIN(payload, length);
+        xSemaphoreGive(wsMutex);
+    }
+}
+
+// (Jangan lupa bungkus juga sendTelemetryWS dengan logika xSemaphoreTake yang sama!)
 void sendTelemetryWS(const SensorData &data)
 {
-    if (!wsConnected)
-    {
-        Serial.println("[WS] Koneksi putus. Menahan pengiriman Telemetri.");
+    if (!wsConnected || wsMutex == NULL)
         return;
-    }
 
     JsonDocument doc;
     doc["type"] = "TELEMETRY_UPDATE";
     JsonObject payloadObj = doc["payload"].to<JsonObject>();
-
     payloadObj["temperature"] = serialized(String(data.temperature, 2));
     payloadObj["lightLux"] = serialized(String(data.lightLux, 2));
     payloadObj["noiseLevel"] = data.noiseLevel;
-
     String jsonString;
     serializeJson(doc, jsonString);
 
-    webSocket.sendTXT(jsonString);
-    // Print di-comment biar terminal tidak terlalu penuh tiap 15 detik
-    Serial.println("[WS] -> Telemetri Terkirim: " + jsonString);
+    if (xSemaphoreTake(wsMutex, portMAX_DELAY) == pdTRUE)
+    {
+        webSocket.sendTXT(jsonString);
+        xSemaphoreGive(wsMutex);
+    }
 }

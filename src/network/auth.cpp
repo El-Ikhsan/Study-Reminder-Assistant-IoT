@@ -10,9 +10,35 @@ namespace
     Preferences authPrefs;
     String apiKey = "";
 
+    String getDeviceId()
+    {
+        // Gunakan static agar MAC Address tidak dihitung ulang setiap kali dipanggil
+        static String cachedDeviceId = "";
+
+        if (cachedDeviceId.isEmpty())
+        {
+            // Ambil MAC Address asli (Contoh: "24:6F:28:A3:B9:1C")
+            String mac = WiFi.macAddress();
+
+            // Hapus titik duanya (Menjadi: "246F28A3B91C")
+            mac.replace(":", "");
+
+            // Ambil 4 karakter terakhir ("B91C")
+            String tail = mac.substring(mac.length() - 4);
+
+            // Jahit menjadi format industrial
+            cachedDeviceId = "RC-v1-" + tail;
+
+            Serial.println("[SYSTEM] Device ID Generate: " + cachedDeviceId);
+        }
+
+        return cachedDeviceId;
+    }
+
     String buildPollUrl()
     {
-        return String(RinchanConfig::Backend::BASE_URL) + "/api/device/poll/" + String(RinchanConfig::Backend::DEVICE_UUID);
+        // ✨ GANTI Pemanggilan Config menjadi pemanggilan Fungsi
+        return String(RinchanConfig::Backend::BASE_URL) + "/api/device/poll/" + getDeviceId();
     }
 }
 

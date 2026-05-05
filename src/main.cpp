@@ -6,6 +6,7 @@
 #include "sensor/sensors.h"
 #include "network/websocket.h"
 #include "features/pomodoro.h"
+#include "features/ai_sensor.h" // ✨ FIX: Tambahkan modul ai_sensor
 #include "core/button_manager.h"
 #include "audio/audio.h"
 #include "ui/display.h"
@@ -46,13 +47,15 @@ void setup()
     initDisplay();
     setDisplayBrightness(0); // LAYAR WAJIB MATI DULU
 
-    // ✨ Ambil Volume dan Brightness dari NVS Memory
+    // Ambil Volume dan Brightness dari NVS Memory
     initHardwareConfig();
 
     initAudio();
     setVolumePercent(getSavedVolume()); // Set volume speaker dari hasil memori
-                                        // Inisialisasi Telinga AI (WakeNet9)
+
+    // Inisialisasi Sensor Lingkungan & AI
     initSensors();
+    aiSensor_init(); // ✨ FIX: Inisialisasi memori AI Sensor
 
     // ==========================================
     // 2. RENDER VISUAL DI BALIK LAYAR
@@ -67,7 +70,7 @@ void setup()
     // Tembakkan suara booting
     playRinchanSound(SND_BOOTING);
 
-    // ✨ Ambil target brightness dari memori
+    // Ambil target brightness dari memori
     int targetBrightness = getSavedBrightness();
 
     // Efek Fade-In dari 0 menuju nilai Brightness memori
@@ -98,7 +101,7 @@ void setup()
     initWiFi();
 
     // ==========================================
-    // 4. AUTENTIKASI / CLAIMING
+    // 6. AUTENTIKASI / CLAIMING
     // ==========================================
     if (isWiFiConnected())
     {
@@ -107,20 +110,18 @@ void setup()
     }
 
     // ==========================================
-    // 5. RUNTIME READY (SISTEM SIAP)
+    // 7. RUNTIME READY (SISTEM SIAP)
     // ==========================================
     if (isRuntimeReady())
     {
         // Ubah mimik jadi standby
         drawEmoji(EMOTION_IDLE);
-        showDialogWidget("Rinchan Siap! Rinchan Siap! Rinchan Siap! Rinchan Siap! Rinchan Siap!");
+        showDialogWidget("Sistem Siap! Menunggu Perintah."); // Teks lebih efisien
 
-        // Opsional: Mainkan suara notifikasi "Ting!" kalau siap
-        // playRinchanSound(SND_AI_NOTIFY);
-
-        // Mulai WS paling akhir
+        // Mulai WS dan Mic paling akhir
         initWebSocket();
         initWakeNet();
+
         // Aktifkan timer pembersih layar (hilang setelah 3 detik)
         bootMessageTimer = millis();
         clearBootMessage = true;
@@ -128,7 +129,7 @@ void setup()
     else
     {
         // Masuk Captive Portal
-        drawEmoji(EMOTION_UNCOMFORTABLE); // Ganti mimik canggung/bingung
+        drawEmoji(EMOTION_UNCOMFORTABLE);
         showDialogWidget("Mode Setup: Buka WiFi Rinchan");
     }
 }
@@ -142,9 +143,14 @@ void loop()
     if (isRuntimeReady())
     {
         // handleButtonLoop();
-        audioLoop();    // Jaga aliran I2S MP3
-        wsLoop();       // Jaga koneksi WebSocket
-        pomodoroLoop(); // Jaga logika timer Pomodoro
+        audioLoop();     // Jaga aliran I2S MP3
+        wsLoop();        // Jaga koneksi WebSocket
+        pomodoroLoop();  // Jaga logika timer Pomodoro
+        aiSensor_loop(); // ✨ FIX: Saraf refleks sensor jalan terus mengawasi ruangan
+
+        // Panggil pendeteksi WakeWord (Mic) di sini jika sudah dibuat loop-nya
+        // Contoh: wakenetLoop();
+        // (Pastikan di dalamnya ada pengecekan: if(pomodoro_isRunning()) return; agar mic mati saat fokus)
 
         // ==========================================
         // 3. PEMBERSIH LAYAR OTOMATIS (NON-BLOCKING)
@@ -171,12 +177,7 @@ void loop()
             else
             {
                 SensorData currentData = readAllSensors();
-                (void)currentData;
-                // sendTelemetryWS(currentData);
-
-                // Opsional: Bikin Rinchan berkedip setiap kali ngirim data sensor!
-                // Ini bikin alatnya terasa hidup tanpa harus memanggil layar terlalu sering.
-                // drawEmoji(EMOJI_HAPPY);
+                sendTelemetryWS(currentData);
             }
 
             isPingNext = !isPingNext;

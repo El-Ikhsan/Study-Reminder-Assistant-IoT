@@ -18,6 +18,14 @@ static esp_afe_sr_iface_t *afe_handle = NULL;
 static esp_afe_sr_data_t *afe_data = NULL;
 volatile int currentNoiseLevel = 30;
 
+// Flag: true saat speaker sedang memutar audio → mic dikunci agar tidak self-feedback
+volatile bool isSpeakerPlaying = false;
+
+void setMicMuted(bool muted)
+{
+    isSpeakerPlaying = muted;
+}
+
 // ==========================================
 // 📥 TASK 1: PENYEDOT SUARA & VU METER
 // ==========================================
@@ -38,6 +46,11 @@ void audio_feed_task(void *arg)
     }
 
     float smoothedDb = 30.0f;
+    float peakRmsWindow = 0.0f; // Peak RMS dalam satu window
+    int chunkCounter = 0;       // Hitung chunk per window
+    // Satu window = WINDOW_SIZE chunk. Jika AFE chunksize = 480 samples @ 16kHz
+    // → satu chunk ≈ 30ms → 16 chunk ≈ 480ms per window.
+    const int WINDOW_SIZE = 16;
 
     while (true)
     {
@@ -57,6 +70,18 @@ void audio_feed_task(void *arg)
                 sum += s16;
             }
 
+            // ⚡ MUTE: Jika speaker sedang play, kunci noise ke nilai senyap
+            // agar suara speaker tidak terbaca sebagai kebisingan lingkungan.
+            if (isSpeakerPlaying)
+            {
+                // Turunkan smoothedDb ke arah 30 (senyap) secara cepat
+                smoothedDb = (smoothedDb * 0.6f) + (30.0f * 0.4f);
+                currentNoiseLevel = constrain((int)smoothedDb, 30, 120);
+                // Tetap suapkan audio ke AFE agar WakeNet tetap jalan
+                afe_handle->feed(afe_data, mono_feed);
+                continue; // Lewati kalkulasi dB dari lingkungan
+            }
+
             // Hapus DC Offset (Tegangan Listrik Bias)
             float mean = (float)sum / audio_chunksize;
             double sumSquares = 0;
@@ -67,18 +92,52 @@ void audio_feed_task(void *arg)
             }
             double rms = sqrt(sumSquares / audio_chunksize);
 
-            // Konversi ke dB dengan smoothing agar pergerakan bar halus
-            if (rms > 2.0)
+            // -----------------------------------------------------------
+            // PEAK-HOLD WINDOW SMOOTHING
+            // -----------------------------------------------------------
+            // Masalah: smoothing per-chunk (30ms) menyebabkan nilai turun
+            // drastis di antara tepukan (setiap 500ms ada ~16 chunk senyap
+            // yang menarik nilai turun). Solusi: ambil PEAK RMS dalam satu
+            // window ~480ms, lalu update smoothedDb 1x per window.
+            //
+            //   Rise: α=0.70 per window → cepat naik saat ada suara keras
+            //   Fall:  α=0.90 per window → decay ~5 detik (10 window × 500ms)
+            // -----------------------------------------------------------
+
+            if ((float)rms > peakRmsWindow)
+                peakRmsWindow = (float)rms;
+
+            chunkCounter++;
+            if (chunkCounter >= WINDOW_SIZE)
             {
-                float db = (float)(20.0 * log10(rms)) + 40.0f; // +40 adalah kalibrasi gain
-                smoothedDb = (smoothedDb * 0.8) + (db * 0.2);
-            }
-            else
-            {
-                smoothedDb = (smoothedDb * 0.9) + (30.0f * 0.1);
+                chunkCounter = 0;
+
+                if (peakRmsWindow > 3.0f)
+                {
+                    float db = (float)(20.0 * log10(peakRmsWindow + 1.0)) + 6.0f;
+                    if (db > smoothedDb)
+                        smoothedDb = (smoothedDb * 0.30f) + (db * 0.70f); // Naik cepat
+                    else
+                        smoothedDb = (smoothedDb * 0.90f) + (db * 0.10f); // Turun ~5 dtk
+                }
+                else
+                {
+                    smoothedDb = (smoothedDb * 0.90f) + (30.0f * 0.10f);
+                }
+
+                peakRmsWindow = 0.0f; // Reset peak untuk window berikutnya
             }
 
             currentNoiseLevel = constrain((int)smoothedDb, 30, 120);
+
+            // 🔍 DEBUG KALIBRASI: Tampilkan peak window tiap 2 detik
+            // Hapus blok ini setelah kalibrasi selesai!
+            // static unsigned long lastDbgMs = 0;
+            // if (millis() - lastDbgMs >= 2000) {
+            //     lastDbgMs = millis();
+            //     Serial.printf("[MIC DEBUG] peakRms=%.1f | smoothedDb=%.1f | noiseLevel=%d\n",
+            //                   peakRmsWindow, smoothedDb, currentNoiseLevel);
+            // }
 
             // Suapkan ke AI
             afe_handle->feed(afe_data, mono_feed);

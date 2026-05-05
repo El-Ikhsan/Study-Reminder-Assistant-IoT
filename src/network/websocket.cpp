@@ -2,6 +2,7 @@
 #include "config.h"
 #include "network/auth.h"
 #include "features/pomodoro.h"
+#include "features/ai_sensor.h" // ✨ FIX: Tambahkan header ai_sensor
 #include "ui/display.h"
 #include "core/hw_manager.h"
 #include "audio/sound_manager.h"
@@ -51,9 +52,24 @@ void routeIncomingMessage(const String &msg)
         forceClearDialog();
         drawEmoji(parseEmotionString(emotionStr)); // Panggil fungsi dari display.h
         showDialogWidget(text);
+
+        // ✨ FIX: Update memori sensor AI jika ada perubahan kondisi
+        if (payload.containsKey("newCondition"))
+        {
+            aiSensor_updateMemory(payload["newCondition"].as<String>());
+        }
     }
 
-    // 3. KIRIM KE DEPARTEMEN HARDWARE (BRIGHTNESS)
+    // ✨ FIX: 3. KHUSUS UPDATE MEMORI SENSOR (Jika kondisi SAMA / AI Diam)
+    else if (type == "UPDATE_SENSOR_STATE")
+    {
+        if (payload.containsKey("newCondition"))
+        {
+            aiSensor_updateMemory(payload["newCondition"].as<String>());
+        }
+    }
+
+    // 4. KIRIM KE DEPARTEMEN HARDWARE (BRIGHTNESS)
     else if (type == "CMD_SET_BRIGHTNESS")
     {
         int newBrightness = payload["value"].as<int>();
@@ -65,7 +81,7 @@ void routeIncomingMessage(const String &msg)
         showDialogWidget("Kecerahan: " + String(newBrightness) + "%");
     }
 
-    // 4. KIRIM KE DEPARTEMEN HARDWARE (VOLUME)
+    // 5. KIRIM KE DEPARTEMEN HARDWARE (VOLUME)
     else if (type == "CMD_SET_VOLUME")
     {
         int newVolume = payload["value"].as<int>();
@@ -220,8 +236,9 @@ void sendTelemetryWS(const SensorData &data)
     JsonDocument doc;
     doc["type"] = "TELEMETRY_UPDATE";
     JsonObject payloadObj = doc["payload"].to<JsonObject>();
-    payloadObj["temperature"] = serialized(String(data.temperature, 2));
-    payloadObj["lightLux"] = serialized(String(data.lightLux, 2));
+    // Kirim sebagai number agar frontend langsung bisa pakai tanpa parse string
+    payloadObj["temperature"] = round(data.temperature * 100.0f) / 100.0f; // 2 desimal
+    payloadObj["lightLux"] = (int)data.lightLux;
     payloadObj["noiseLevel"] = data.noiseLevel;
     String jsonString;
     serializeJson(doc, jsonString);

@@ -1,30 +1,27 @@
 #include "pomodoro.h"
 #include "network/websocket.h"
-#include "sensor/sensors.h"
 #include "ui/display.h"
 #include "core/hw_manager.h"
 #include "audio/sound_manager.h"
+#include "features/ai_sensor.h"
 #include <ArduinoJson.h>
 
 namespace
 {
     constexpr unsigned long ONE_SECOND_MS = 1000;
-    constexpr unsigned long DEFAULT_SENSOR_INTERVAL_MS = 60000;
     constexpr int DEFAULT_FOCUS_DURATION_MIN = 25;
     constexpr int DEFAULT_REST_DURATION_MIN = 5;
     constexpr int DEFAULT_TARGET_CYCLES = 1;
-    constexpr int DEFAULT_SENSOR_INTERVAL_SEC = 60;
 
     struct PomodoroState
     {
         bool isRunning = false;
         String sessionId = "";
 
-        String condition = "normal";
+        String media = "Laptop";
         int focusDurationMin = DEFAULT_FOCUS_DURATION_MIN;
         int restDurationMin = DEFAULT_REST_DURATION_MIN;
         int targetCycles = DEFAULT_TARGET_CYCLES;
-        unsigned long sensorIntervalMs = DEFAULT_SENSOR_INTERVAL_MS;
 
         String mode = "fokus";
         String phase = "awal";
@@ -33,7 +30,6 @@ namespace
         unsigned long timeRemainingSec = 0;
         unsigned long durationTotalSec = 0;
         unsigned long lastTimerTick = 0;
-        unsigned long lastSensorTick = 0;
 
         bool reportedAwal = false;
         bool reportedTengah = false;
@@ -41,6 +37,8 @@ namespace
     };
 
     PomodoroState state;
+
+    void sendPhaseReport(const String &mode, float durationMin, float remainingMin);
 
     void startTimerForMode(const String &mode, int durationMin)
     {
@@ -52,10 +50,9 @@ namespace
         state.reportedTengah = false;
         state.reportedAkhir = false;
 
-        Serial.printf("\n[⏳] Memulai Mode: %s | Durasi: %d menit | Siklus: %d/%d\n",
-                      state.mode.c_str(), durationMin, state.currentCycle, state.targetCycles);
+        Serial.printf("\n[⏳] Memulai Mode: %s | Durasi: %d menit | Siklus: %d/%d | Media: %s\n",
+                      state.mode.c_str(), durationMin, state.currentCycle, state.targetCycles, state.media.c_str());
 
-        // ✨ TRIGGER SUARA SESI
         if (mode == "fokus")
         {
             playRinchanSound(SND_POMO_START);
@@ -64,9 +61,9 @@ namespace
         {
             playRinchanSound(SND_POMO_SWITCH);
         }
-    }
 
-    void sendPhaseReport(const String &mode, float durationMin, float remainingMin, const String &condition);
+        // Pengiriman Fase Awal DIHAPUS dari sini agar tidak Stack Overflow!
+    }
 
     void switchPomodoroMode()
     {
@@ -85,13 +82,18 @@ namespace
                 Serial.println("[🎉] SEMUA SIKLUS POMODORO SELESAI!");
                 state.isRunning = false;
 
-                playRinchanSound(SND_POMO_STOP); // ✨ Suara Selesai Total
+                playRinchanSound(SND_POMO_STOP);
                 clearWidget();
+
                 if (wsConnected && !state.sessionId.isEmpty())
                 {
                     JsonDocument doc;
                     doc["type"] = "SESSION_COMPLETED";
+
                     doc["payload"]["sessionId"] = state.sessionId;
+                    doc["payload"]["currentCycle"] = state.targetCycles;
+                    doc["payload"]["media"] = state.media;
+
                     String jsonString;
                     serializeJson(doc, jsonString);
                     sendRawWS(jsonString);
@@ -99,7 +101,6 @@ namespace
 
                 state.sessionId = "";
 
-                // Kembalikan wajah ke normal setelah selesai
                 forceClearDialog();
                 drawEmoji(EMOTION_IDLE);
                 showDialogWidget("Kerja Bagus, Shimarin!");
@@ -111,30 +112,7 @@ namespace
         }
     }
 
-    void sendSensorReportForAI(float temp, float lux, int noise)
-    {
-        if (!wsConnected || !state.isRunning || state.sessionId.isEmpty())
-            return;
-
-        JsonDocument doc;
-        doc["type"] = "SENSOR_REPORT_FOR_AI";
-        JsonObject payload = doc["payload"].to<JsonObject>();
-
-        payload["sessionId"] = state.sessionId;
-        payload["currentCycle"] = state.currentCycle;
-        payload["mode"] = state.mode;
-        payload["phase"] = state.phase;
-
-        payload["temperature"] = temp;
-        payload["lightLux"] = lux;
-        payload["noiseLevel"] = noise;
-
-        String jsonString;
-        serializeJson(doc, jsonString);
-        sendRawWS(jsonString);
-    }
-
-    void sendPhaseReport(const String &mode, float durationMin, float remainingMin, const String &condition)
+    void sendPhaseReport(const String &mode, float durationMin, float remainingMin)
     {
         if (!wsConnected || state.sessionId.isEmpty())
             return;
@@ -145,18 +123,18 @@ namespace
 
         payload["sessionId"] = state.sessionId;
         payload["currentCycle"] = state.currentCycle;
-
         payload["mode"] = mode;
+        payload["phase"] = state.phase;
+        payload["media"] = state.media;
         payload["durationMin"] = durationMin;
         payload["remainingMin"] = remainingMin;
-        payload["condition"] = condition;
 
         String jsonString;
         serializeJson(doc, jsonString);
         sendRawWS(jsonString);
     }
 
-} // namespace
+} // end namespace
 
 void pomodoro_processCommand(const String &type, JsonObject payload)
 {
@@ -166,18 +144,35 @@ void pomodoro_processCommand(const String &type, JsonObject payload)
 
         state.sessionId = payload["sessionId"].as<String>();
         state.focusDurationMin = payload["focusDuration"] | DEFAULT_FOCUS_DURATION_MIN;
-        state.restDurationMin = payload["breakDuration"] | DEFAULT_REST_DURATION_MIN;
-        state.targetCycles = payload["cycles"] | DEFAULT_TARGET_CYCLES;
-        state.condition = payload["mode"] | "normal";
 
-        int intervalSec = payload["sensorIntervalSec"] | DEFAULT_SENSOR_INTERVAL_SEC;
-        state.sensorIntervalMs = intervalSec * 1000;
+        // ✨ FIX 1: Parsing aman! Mencegah Stack Overflow ArduinoJson
+        int restDur = payload["restDuration"];
+        int breakDur = payload["breakDuration"];
+        if (restDur > 0)
+        {
+            state.restDurationMin = restDur;
+        }
+        else if (breakDur > 0)
+        {
+            state.restDurationMin = breakDur;
+        }
+        else
+        {
+            state.restDurationMin = DEFAULT_REST_DURATION_MIN;
+        }
+
+        state.targetCycles = payload["cycles"] | DEFAULT_TARGET_CYCLES;
+        state.media = payload["media"] | "Laptop";
 
         state.isRunning = true;
         state.currentCycle = 1;
+        state.lastTimerTick = millis();
+
+        aiSensor_forceReset();
 
         forceClearDialog();
         drawEmoji(EMOTION_LISTENING);
+
         startTimerForMode("fokus", state.focusDurationMin);
     }
     else if (type == "CMD_STOP_POMODORO")
@@ -185,11 +180,14 @@ void pomodoro_processCommand(const String &type, JsonObject payload)
         Serial.println("\n[⏹️] Perintah STOP diterima! Menghentikan Timer.");
         state.isRunning = false;
         state.sessionId = "";
-        playRinchanSound(SND_POMO_CANCEL);
+
+        // ✨ Render UI Dulu agar RAM bernapas sebelum memutar Audio
         clearWidget();
         forceClearDialog();
         drawEmoji(EMOTION_SAD);
         showDialogWidget("Yah, dibatalkan...");
+
+        playRinchanSound(SND_POMO_CANCEL);
     }
 }
 
@@ -198,57 +196,58 @@ void pomodoroLoop()
     if (!state.isRunning)
         return;
 
+    // ✨ FIX 2: TRIGGER FASE AWAL SECARA INSTAN! (Ditaruh di luar timer 1 detik)
+    // AI akan diberitahu detik itu juga tanpa menyebabkan tumpukan memori di WS.
+    if (!state.reportedAwal)
+    {
+        float durationMinFloat = state.durationTotalSec / 60.0;
+        float remainingMinFloat = state.timeRemainingSec / 60.0;
+
+        state.phase = "awal";
+        sendPhaseReport(state.mode, durationMinFloat, remainingMinFloat);
+        state.reportedAwal = true;
+    }
+
     unsigned long currentMillis = millis();
     unsigned long elapsed = currentMillis - state.lastTimerTick;
 
-    // A. LOGIKA PENGHITUNG WAKTU CERDAS (CATCH-UP TIME)
     if (elapsed >= ONE_SECOND_MS)
     {
-        // 1. Hitung berapa detik yang terlewat (misal: CPU tertahan 5 detik, maka missedSeconds = 5)
         int missedSeconds = elapsed / ONE_SECOND_MS;
-
-        // 2. Majukan patokan waktu sesuai kelipatan detik yang terlewat
         state.lastTimerTick += (missedSeconds * ONE_SECOND_MS);
 
         if (state.timeRemainingSec > 0)
         {
-            // 3. Kurangi sisa waktu borongan (bukan cuma 1 detik)
             if (state.timeRemainingSec >= missedSeconds)
             {
                 state.timeRemainingSec -= missedSeconds;
             }
             else
             {
-                state.timeRemainingSec = 0; // Cegah angka minus
+                state.timeRemainingSec = 0;
             }
 
-            // ✨ UPDATE TIMER KE LAYAR
-            // (Akan otomatis di-skip oleh display.cpp kalau layar sedang dipakai ngobrol)
             int minRemaining = state.timeRemainingSec / 60;
             int secRemaining = state.timeRemainingSec % 60;
             updatePomodoroWidget(minRemaining, secRemaining, (state.mode == "istirahat"));
 
-            // Hitung rasio untuk laporan AI
             float ratio = (float)state.timeRemainingSec / (float)state.durationTotalSec;
             float durationMinFloat = state.durationTotalSec / 60.0;
             float remainingMinFloat = state.timeRemainingSec / 60.0;
 
-            if (!state.reportedAwal)
-            {
-                state.phase = "awal";
-                sendPhaseReport(state.mode, durationMinFloat, remainingMinFloat, state.condition);
-                state.reportedAwal = true;
-            }
-            else if (ratio <= 0.50 && !state.reportedTengah)
+            // FASE TENGAH (50%) -> Hanya untuk mode Fokus
+            if (state.mode == "fokus" && ratio <= 0.50 && !state.reportedTengah)
             {
                 state.phase = "tengah";
-                sendPhaseReport(state.mode, durationMinFloat, remainingMinFloat, state.condition);
+                sendPhaseReport(state.mode, durationMinFloat, remainingMinFloat);
                 state.reportedTengah = true;
             }
-            else if (ratio <= 0.10 && !state.reportedAkhir)
+
+            // FASE AKHIR (10%) -> Fokus & Istirahat
+            if (ratio <= 0.10 && !state.reportedAkhir)
             {
                 state.phase = "akhir";
-                sendPhaseReport(state.mode, durationMinFloat, remainingMinFloat, state.condition);
+                sendPhaseReport(state.mode, durationMinFloat, remainingMinFloat);
                 state.reportedAkhir = true;
             }
         }
@@ -257,12 +256,14 @@ void pomodoroLoop()
             switchPomodoroMode();
         }
     }
-
-    // B. LOGIKA SENSOR AI
-    if (currentMillis - state.lastSensorTick >= state.sensorIntervalMs)
-    {
-        state.lastSensorTick = currentMillis;
-        SensorData currentData = readAllSensors();
-        sendSensorReportForAI(currentData.temperature, currentData.lightLux, currentData.noiseLevel);
-    }
 }
+
+// ==========================================
+// ✨ GETTERS UNTUK MODUL AI SENSOR
+// ==========================================
+bool pomodoro_isRunning() { return state.isRunning; }
+String pomodoro_getSessionId() { return state.sessionId; }
+int pomodoro_getCurrentCycle() { return state.currentCycle; }
+String pomodoro_getCurrentMode() { return state.mode; }
+String pomodoro_getCurrentPhase() { return state.phase; }
+String pomodoro_getMedia() { return state.media; }

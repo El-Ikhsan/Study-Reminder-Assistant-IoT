@@ -5,6 +5,7 @@
 #include <driver/i2s.h>
 #include <math.h>
 #include <string.h>
+#include "voice_recognition/wakenet.h" // Untuk setMicMuted()
 
 namespace
 {
@@ -26,6 +27,7 @@ namespace
     int16_t soundBuffer[SYNC_SAMPLES * 2];   // Berisi: Klik + Senyap
     int16_t silenceBuffer[SYNC_SAMPLES * 2]; // Berisi: Senyap Total
     bool isSyncCached = false;
+    int currentVolumePercent = 60; // Default, akan di-override oleh setVolumePercent()
 
 }
 
@@ -36,6 +38,9 @@ void playTypingSync(bool withSound)
     {
         memset(soundBuffer, 0, SYNC_BYTES);
         memset(silenceBuffer, 0, SYNC_BYTES);
+
+        // Scale amplitude berdasarkan volume saat ini
+        float volScale = constrain(currentVolumePercent, 0, 100) / 100.0f;
 
         // Generate suara ketikan hanya di 15ms pertama dari soundBuffer
         int clickSamples = (16000 * 15) / 1000;
@@ -48,7 +53,7 @@ void playTypingSync(bool withSound)
             float decay = 1.0f - p;
             float env = attack * decay * decay;
             float s = sinf(twoPi * 1250.0f * t) * env;
-            int16_t v = (int16_t)(s * 4000.0f);
+            int16_t v = (int16_t)(s * 4000.0f * volScale);
 
             soundBuffer[i * 2] = v;     // Kiri
             soundBuffer[i * 2 + 1] = v; // Kanan
@@ -75,27 +80,22 @@ void playTypingCodeClick()
 {
     if (!isPcmCached)
     {
+        float volScale = constrain(currentVolumePercent, 0, 100) / 100.0f;
         constexpr float twoPi = 6.28318530718f;
         for (int i = 0; i < 256; ++i)
         {
             float t = (float)i / 16000.0f;
             float p = (float)i / 256.0f;
-
-            // Attack lebih lambat agar tidak terlalu "menusuk" telinga
             float attack = (p < 0.40f) ? (p / 0.40f) : 1.0f;
             float decay = 1.0f - p;
             float env = attack * decay;
-
-            // ✨ PITCH: Turunkan dari 1250.0f menjadi 600.0f (Lebih berat/kalem)
             float s = sinf(twoPi * 600.0f * t) * env;
+            int16_t v = (int16_t)(s * 1000.0f * volScale);
 
-            // ✨ VOLUME: Turunkan dari 4000.0f menjadi 1000.0f (Lebih pelan)
-            int16_t v = (int16_t)(s * 1000.0f);
-
-            typingPcmCache[i * 2] = v;     // Kiri
-            typingPcmCache[i * 2 + 1] = v; // Kanan
+            typingPcmCache[i * 2] = v;
+            typingPcmCache[i * 2 + 1] = v;
         }
-        isPcmCached = true; // Simpan ke cache agar I2S tidak perlu menghitung ulang
+        isPcmCached = true;
     }
 
     size_t written = 0;
@@ -165,6 +165,9 @@ void playAudioSFX(const char *path)
     audio.connecttoFS(LittleFS, path);
     lastSfxStartMs = now;
 
+    // 🔇 Mute mic agar suara speaker tidak terbaca sebagai kebisingan
+    setMicMuted(true);
+
     // Beri sedikit "tendangan" awal agar decoder MP3/WAV langsung memompa buffer I2S
     const unsigned long primeStart = millis();
     while (millis() - primeStart < 10UL)
@@ -200,6 +203,9 @@ void playAudioLocal(const char *path)
     isSyncwordReady = false;
     audio.connecttoFS(LittleFS, path);
 
+    // 🔇 Mute mic agar suara speaker tidak terbaca sebagai kebisingan
+    setMicMuted(true);
+
     // Tunggu decoder menemukan syncword agar startup tidak patah di awal.
     const unsigned long warmupStartMs = millis();
     while (!isSyncwordReady && (millis() - warmupStartMs < 2000))
@@ -218,14 +224,18 @@ void playAudioLocal(const char *path)
 
 void setVolumePercent(int percent)
 {
-    // 1. Kunci angka agar tidak tembus di bawah 0 atau di atas 100
     percent = constrain(percent, 0, 100);
-
-    // 2. Konversi skala 0-100 menjadi 0-21 secara otomatis
     int mappedVolume = map(percent, 0, 100, 0, 21);
-
-    // 3. Kirim angka hasil terjemahan ke library
     audio.setVolume(mappedVolume);
+
+    // Jika volume berubah, invalidate cache PCM agar buffer diregenerasi
+    // dengan amplitude yang sesuai volume baru
+    if (percent != currentVolumePercent)
+    {
+        isSyncCached = false; // Invalidate typing sync buffer
+        isPcmCached  = false; // Invalidate typing click buffer
+    }
+    currentVolumePercent = percent;
 
     Serial.printf("[AUDIO] Volume diset ke %d%% (Level Hardware: %d/21)\n", percent, mappedVolume);
 }
@@ -242,6 +252,8 @@ void playAudioUrl(const String &url)
         return;
 
     Serial.println("[AUDIO] Mengunduh dan memutar: " + url);
+    // 🔇 Mute mic agar suara streaming tidak terbaca sebagai kebisingan
+    setMicMuted(true);
     // connecttohost akan otomatis memulai streaming MP3/WAV dari URL
     audio.connecttohost(url.c_str());
 }
@@ -249,6 +261,8 @@ void playAudioUrl(const String &url)
 void stopAudio()
 {
     audio.stopSong();
+    // 🔈 Unmute mic: speaker sudah berhenti, mic boleh aktif lagi
+    setMicMuted(false);
     Serial.println("[AUDIO] Pemutaran dihentikan.");
 }
 
@@ -292,6 +306,9 @@ void audio_eof_mp3(const char *info)
             isTypingSfxBusy = false;
         }
     }
+
+    // 🔈 Audio selesai: unmute mic kembali
+    setMicMuted(false);
 
     Serial.print("[AUDIO END] Selesai memutar: ");
     Serial.println(info);

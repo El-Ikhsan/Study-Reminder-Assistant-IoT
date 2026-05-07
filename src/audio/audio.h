@@ -13,5 +13,6 @@ void setVolumePercent(int percent);
 void playTypingCodeClick();
 void playTypingSync(bool withSound);
 uint32_t getAudioFilePos();
+bool audio_isPlaying();
 
 #endif

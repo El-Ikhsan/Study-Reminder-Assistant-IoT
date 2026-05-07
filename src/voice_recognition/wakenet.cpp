@@ -45,44 +45,38 @@ void audio_feed_task(void *arg)
         return;
     }
 
-    float smoothedDb = 30.0f;
-    float peakRmsWindow = 0.0f; // Peak RMS dalam satu window
-    int chunkCounter = 0;       // Hitung chunk per window
-    // Satu window = WINDOW_SIZE chunk. Jika AFE chunksize = 480 samples @ 16kHz
-    // → satu chunk ≈ 30ms → 16 chunk ≈ 480ms per window.
+    // ✨ FIX FINAL: Mulai dari angka ambang sunyi natural (45 dB) bukan 30 dB
+    float smoothedDb = 45.0f;
+    float sumRmsWindow = 0.0f; // Kumpulkan rata-ratanya, BUKAN puncaknya!
+    int chunkCounter = 0;
     const int WINDOW_SIZE = 16;
 
     while (true)
     {
         size_t bytes_read = 0;
-        // Menyedot suara dari I2S
         i2s_read(I2S_NUM_1, i2s_buff, expected_bytes, &bytes_read, portMAX_DELAY);
 
         if (bytes_read == expected_bytes)
         {
-            // Ekstrak data 32-bit menjadi 16-bit
             int64_t sum = 0;
             for (int i = 0; i < audio_chunksize; i++)
             {
-                // INMP441 menyimpan data valid di bit atas, kita geser ke bawah
-                int16_t s16 = (int16_t)(i2s_buff[i] >> 14);
+                // ✨ FIX 1: GESER 16 BIT! Mengembalikan volume ke normal
+                int16_t s16 = (int16_t)(i2s_buff[i] >> 16);
                 mono_feed[i] = s16;
                 sum += s16;
             }
 
-            // ⚡ MUTE: Jika speaker sedang play, kunci noise ke nilai senyap
-            // agar suara speaker tidak terbaca sebagai kebisingan lingkungan.
             if (isSpeakerPlaying)
             {
-                // Turunkan smoothedDb ke arah 30 (senyap) secara cepat
-                smoothedDb = (smoothedDb * 0.6f) + (30.0f * 0.4f);
-                currentNoiseLevel = constrain((int)smoothedDb, 30, 120);
-                // Tetap suapkan audio ke AFE agar WakeNet tetap jalan
+                // ✨ FIX FINAL: Kunci ke batas ambang hening alamiah saat speaker bicara
+                smoothedDb = (smoothedDb * 0.6f) + (45.0f * 0.4f);
+                currentNoiseLevel = constrain((int)smoothedDb, 45, 120);
                 afe_handle->feed(afe_data, mono_feed);
-                continue; // Lewati kalkulasi dB dari lingkungan
+                continue;
             }
 
-            // Hapus DC Offset (Tegangan Listrik Bias)
+            // Hapus DC Offset
             float mean = (float)sum / audio_chunksize;
             double sumSquares = 0;
             for (int i = 0; i < audio_chunksize; i++)
@@ -92,59 +86,69 @@ void audio_feed_task(void *arg)
             }
             double rms = sqrt(sumSquares / audio_chunksize);
 
-            // -----------------------------------------------------------
-            // PEAK-HOLD WINDOW SMOOTHING
-            // -----------------------------------------------------------
-            // Masalah: smoothing per-chunk (30ms) menyebabkan nilai turun
-            // drastis di antara tepukan (setiap 500ms ada ~16 chunk senyap
-            // yang menarik nilai turun). Solusi: ambil PEAK RMS dalam satu
-            // window ~480ms, lalu update smoothedDb 1x per window.
-            //
-            //   Rise: α=0.70 per window → cepat naik saat ada suara keras
-            //   Fall:  α=0.90 per window → decay ~5 detik (10 window × 500ms)
-            // -----------------------------------------------------------
-
-            if ((float)rms > peakRmsWindow)
-                peakRmsWindow = (float)rms;
-
+            // ✨ FIX 2: JUMLAHKAN UNTUK RATA-RATA, BUKAN MENCARI PEAK
+            sumRmsWindow += (float)rms;
             chunkCounter++;
+
             if (chunkCounter >= WINDOW_SIZE)
             {
+                float avgRms = sumRmsWindow / WINDOW_SIZE;
                 chunkCounter = 0;
+                sumRmsWindow = 0.0f;
 
-                if (peakRmsWindow > 3.0f)
+                // =======================================================
+                // ⚡ RUMUS SEPUH DSP: dBFS ke SPL (Sound Pressure Level)
+                // =======================================================
+                // 1. Hitung dBFS (Batas maksimal int16_t adalah 32768)
+                float dbfs = 0.0f;
+                if (avgRms > 1.0f)
                 {
-                    float db = (float)(20.0 * log10(peakRmsWindow + 1.0)) + 6.0f;
-                    if (db > smoothedDb)
-                        smoothedDb = (smoothedDb * 0.30f) + (db * 0.70f); // Naik cepat
-                    else
-                        smoothedDb = (smoothedDb * 0.90f) + (db * 0.10f); // Turun ~5 dtk
+                    dbfs = 20.0f * log10(avgRms / 32768.0f);
                 }
                 else
                 {
-                    smoothedDb = (smoothedDb * 0.90f) + (30.0f * 0.10f);
+                    dbfs = -90.0f; // Sunyi total digital
                 }
 
-                peakRmsWindow = 0.0f; // Reset peak untuk window berikutnya
+                // 2. INMP441 Acoustic Overload Point (AOP) adalah ~120 dB SPL.
+                // Jadi, 0 dBFS (Max Digital) = 120 dB SPL Alam Nyata.
+                float rawSpl = dbfs + 120.0f;
+
+                // 3. NOISE GATE (Pintu Gerbang Derau ESP32)
+                // ✨ FIX FINAL: Disesuaikan dengan log kamarmu.
+                // Hardware noise floor aslimu mentok di sekitar 56-60 dB.
+                const float HARDWARE_NOISE_FLOOR = 58.0f;
+
+                // ✨ FIX FINAL: Angka 45 dB sangat realistis untuk kamar hening di Indonesia
+                float finalDb = 45.0f;
+
+                if (rawSpl > HARDWARE_NOISE_FLOOR)
+                {
+                    finalDb = rawSpl; // Jika di atas noise listrik, ambil suara aslinya
+                }
+
+                // 4. LOW-PASS FILTER (Smoothing Natural)
+                if (finalDb > smoothedDb)
+                {
+                    smoothedDb = (smoothedDb * 0.40f) + (finalDb * 0.60f); // Naik cepat
+                }
+                else
+                {
+                    // ✨ FIX FINAL: Perlambat sedikit turunnya agar jarum tidak terlalu goyang (jitter)
+                    smoothedDb = (smoothedDb * 0.90f) + (finalDb * 0.10f);
+                }
+
+                // ✨ FIX FINAL: Batas constrain disesuaikan dengan baseline 45 dB
+                currentNoiseLevel = constrain((int)smoothedDb, 45, 120);
+
+                // 🔍 DEBUG KALIBRASI PRO (Komen ini saat hari H sidang)
+                // Serial.printf("[MIC PRO] avgRms=%.1f | rawSpl=%.1f | smoothedDb=%.1f\n", avgRms, rawSpl, smoothedDb);
             }
 
-            currentNoiseLevel = constrain((int)smoothedDb, 30, 120);
-
-            // 🔍 DEBUG KALIBRASI: Tampilkan peak window tiap 2 detik
-            // Hapus blok ini setelah kalibrasi selesai!
-            // static unsigned long lastDbgMs = 0;
-            // if (millis() - lastDbgMs >= 2000) {
-            //     lastDbgMs = millis();
-            //     Serial.printf("[MIC DEBUG] peakRms=%.1f | smoothedDb=%.1f | noiseLevel=%d\n",
-            //                   peakRmsWindow, smoothedDb, currentNoiseLevel);
-            // }
-
-            // Suapkan ke AI
             afe_handle->feed(afe_data, mono_feed);
         }
     }
 }
-
 // ==========================================
 // 🧠 TASK 2: PENDETEKSI KATA KUNCI
 // ==========================================

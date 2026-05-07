@@ -233,7 +233,7 @@ void setVolumePercent(int percent)
     if (percent != currentVolumePercent)
     {
         isSyncCached = false; // Invalidate typing sync buffer
-        isPcmCached  = false; // Invalidate typing click buffer
+        isPcmCached = false;  // Invalidate typing click buffer
     }
     currentVolumePercent = percent;
 
@@ -317,4 +317,11 @@ void audio_eof_mp3(const char *info)
 uint32_t getAudioFilePos()
 {
     return audio.getFilePos();
+}
+
+bool audio_isPlaying()
+{
+    // audio.isRunning() adalah bawaan dari library ESP32-audioI2S
+    // Akan me-return 'true' jika decoding MP3/WAV sedang berlangsung
+    return audio.isRunning();
 }

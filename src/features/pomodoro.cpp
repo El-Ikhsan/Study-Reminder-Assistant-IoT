@@ -145,7 +145,6 @@ void pomodoro_processCommand(const String &type, JsonObject payload)
         state.sessionId = payload["sessionId"].as<String>();
         state.focusDurationMin = payload["focusDuration"] | DEFAULT_FOCUS_DURATION_MIN;
 
-        // ✨ FIX 1: Parsing aman! Mencegah Stack Overflow ArduinoJson
         int restDur = payload["restDuration"];
         int breakDur = payload["breakDuration"];
         if (restDur > 0)
@@ -171,7 +170,9 @@ void pomodoro_processCommand(const String &type, JsonObject payload)
         aiSensor_forceReset();
 
         forceClearDialog();
-        drawEmoji(EMOTION_LISTENING);
+
+        // ✨ FIX: Saat Pomodoro Start, wajah murni kembali ke IDLE
+        drawEmoji(EMOTION_IDLE);
 
         startTimerForMode("fokus", state.focusDurationMin);
     }
@@ -184,7 +185,7 @@ void pomodoro_processCommand(const String &type, JsonObject payload)
         // ✨ Render UI Dulu agar RAM bernapas sebelum memutar Audio
         clearWidget();
         forceClearDialog();
-        drawEmoji(EMOTION_SAD);
+        drawEmoji(EMOTION_IDLE);
         showDialogWidget("Yah, dibatalkan...");
 
         playRinchanSound(SND_POMO_CANCEL);
@@ -229,7 +230,7 @@ void pomodoroLoop()
 
             int minRemaining = state.timeRemainingSec / 60;
             int secRemaining = state.timeRemainingSec % 60;
-            updatePomodoroWidget(minRemaining, secRemaining, (state.mode == "istirahat"));
+            updatePomodoroWidget(minRemaining, secRemaining, (state.mode == "istirahat"), state.currentCycle, state.media);
 
             float ratio = (float)state.timeRemainingSec / (float)state.durationTotalSec;
             float durationMinFloat = state.durationTotalSec / 60.0;

@@ -50,7 +50,7 @@ void voiceChat_stopRecording()
     // HAPUS fungsi showDialogWidget("Memproses suara...") dari sini!
     // Cukup gunakan drawEmoji yang sifatnya instan dan tidak memblokir Core.
     forceClearDialog();
-    drawEmoji(EMOTION_SURPRISED);
+    drawEmoji(EMOTION_LISTENING);
 }
 
 void voiceChat_feedAudio(int16_t *audio_data, size_t data_size, int vad_state)

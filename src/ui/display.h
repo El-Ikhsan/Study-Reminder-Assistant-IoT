@@ -1,19 +1,17 @@
 #pragma once
 #include <Arduino.h>
 
-// 10 Kunci Emosi Wajah (Mimik)
+// ✨ HANYA 8 EMOSI (1-to-1 dengan file GIF)
 enum Emotion
 {
-    EMOTION_HOT,          // Panas
-    EMOTION_COLD,         // Dingin
-    EMOTION_NOISY,        // Berisik
-    EMOTION_SLEEPY,       // Ngantuk
-    EMOTION_IDLE,         // Relax / Netral
-    EMOTION_SURPRISED,    // Kaget / Terburu-buru
-    EMOTION_DARK,         // Gelap
-    EMOTION_SAD,          // Buruk / Stress / Menangis
-    EMOTION_LISTENING,    // Mendengarkan (Wakenet aktif)
-    EMOTION_UNCOMFORTABLE // Tidak nyaman
+    EMOTION_HOT,       // panas
+    EMOTION_COLD,      // dingin_extrem
+    EMOTION_DARK,      // gelap
+    EMOTION_GLARE,     // silau
+    EMOTION_NOISY,     // bising
+    EMOTION_LISTENING, // mendengar (Wakenet aktif)
+    EMOTION_RECOVERY,  // pemulihan
+    EMOTION_IDLE       // idle / standby
 };
 Emotion parseEmotionString(String emoStr);
 
@@ -24,17 +22,15 @@ enum WidgetMode
     WIDGET_POMODORO
 };
 
-// ✨ BENDERA INTERUPSI GLOBAL
-// Kata kunci 'extern' memberitahu compiler bahwa variabel ini
-// fisiknya ada di file display.cpp, tapi file lain boleh mengaksesnya.
 extern volatile bool cancelCurrentDialog;
 
-// Fungsi UI
 void initDisplay();
 void setDisplayBrightness(int percent);
 void showBootingScreen();
+void drawTopBar(bool isWifiConnected, bool isMicActive, String timeStr, String alertText);
+void playDisplayAnimation();
 void drawEmoji(Emotion emoji);
 void showDialogWidget(String text);
-void updatePomodoroWidget(int min, int sec, bool isBreak);
+void updatePomodoroWidget(int min, int sec, bool isBreak, int cycle, String media);
 void clearWidget();
 void forceClearDialog();

@@ -49,14 +49,28 @@ void routeIncomingMessage(const String &msg)
         String text = payload["text"].as<String>();
         Serial.printf("[AI] Emosi: %s | Teks: %s\n", emotionStr.c_str(), text.c_str());
 
+        // Parse string dari backend ke Enum C++ kita
+        Emotion aiEmo = parseEmotionString(emotionStr);
+
         forceClearDialog();
-        drawEmoji(parseEmotionString(emotionStr)); // Panggil fungsi dari display.h
+        drawEmoji(aiEmo); // Render emosi interupsi / pemulihan
+
+        // Fungsi ini akan menahan kode sampai teks selesai diketik & dibaca user (5 detik)
         showDialogWidget(text);
 
         // ✨ FIX: Update memori sensor AI jika ada perubahan kondisi
         if (payload.containsKey("newCondition"))
         {
             aiSensor_updateMemory(payload["newCondition"].as<String>());
+        }
+
+        // ✨ LOGIKA FLOW BARU:
+        // Setelah teks selesai dibaca dan kotak hilang, cek apakah ini sensor pemulihan.
+        // Jika YA, otomatis kembalikan wajah ke IDLE.
+        // Jika TIDAK, wajah interupsi (panas/dingin) akan terus tertahan di layar.
+        if (aiEmo == EMOTION_RECOVERY)
+        {
+            drawEmoji(EMOTION_IDLE);
         }
     }
 
@@ -77,7 +91,6 @@ void routeIncomingMessage(const String &msg)
         updateBrightness(newBrightness);
 
         forceClearDialog();
-        drawEmoji(EMOTION_SURPRISED);
         showDialogWidget("Kecerahan: " + String(newBrightness) + "%");
     }
 
@@ -89,7 +102,6 @@ void routeIncomingMessage(const String &msg)
         updateVolume(newVolume);
 
         forceClearDialog();
-        drawEmoji(EMOTION_LISTENING);
         playRinchanSound(SND_AI_NOTIFY);
         showDialogWidget("Volume Audio: " + String(newVolume) + "%");
     }

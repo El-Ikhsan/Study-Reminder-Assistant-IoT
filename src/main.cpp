@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <time.h> // ✨ FIX: Library Waktu Nyata (NTP)
 #include "config.h"
 #include "network/wifi.h"
 #include "network/auth.h"
@@ -6,13 +7,16 @@
 #include "sensor/sensors.h"
 #include "network/websocket.h"
 #include "features/pomodoro.h"
-#include "features/ai_sensor.h" // ✨ FIX: Tambahkan modul ai_sensor
+#include "features/ai_sensor.h"
 #include "core/button_manager.h"
 #include "audio/audio.h"
 #include "ui/display.h"
 #include "audio/sound_manager.h"
 #include <TFT_eSPI.h>
 #include "voice_recognition/wakenet.h"
+
+// ✨ Jembatan ke file wakenet.cpp untuk saklar Mic
+extern void setMicMuted(bool muted);
 
 namespace
 {
@@ -26,150 +30,168 @@ namespace
     {
         return isWiFiConnected() && isDeviceClaimed();
     }
+
+    // ✨ FUNGSI PENGAMBIL WAKTU NYATA (JAM:MENIT)
+    String getRealTime()
+    {
+        struct tm timeinfo;
+        // Coba ambil waktu dari sistem (Timeout 10ms agar tidak lag)
+        if (!getLocalTime(&timeinfo, 10))
+        {
+            return "--:--"; // Jika gagal / belum sinkron
+        }
+        char timeStringBuff[10];
+        strftime(timeStringBuff, sizeof(timeStringBuff), "%H:%M", &timeinfo);
+        return String(timeStringBuff);
+    }
 }
 
 void setup()
 {
     Serial.begin(RinchanConfig::Runtime::SERIAL_BAUDRATE);
-    delay(500); // Jangan terlalu lama agar tidak terasa lag saat dinyalakan
+    delay(500);
+
 #ifdef RGB_BUILTIN
     neopixelWrite(RGB_BUILTIN, 0, 0, 0);
 #else
-    neopixelWrite(48, 0, 0, 0); // Jika boardmu pakai pin 48
-    neopixelWrite(8, 0, 0, 0);  // Jika boardmu pakai pin 8
+    neopixelWrite(48, 0, 0, 0);
+    neopixelWrite(8, 0, 0, 0);
 #endif
 
     Serial.println("\n=== RINCHAN IOT: COLD BOOT ===");
 
-    // ==========================================
-    // 1. PRE-BOOT: LOAD CONFIG & HARDWARE AWAL
-    // ==========================================
+    // 1. PRE-BOOT
     initDisplay();
-    setDisplayBrightness(0); // LAYAR WAJIB MATI DULU
+    setDisplayBrightness(0);
 
-    // Ambil Volume dan Brightness dari NVS Memory
     initHardwareConfig();
-
     initAudio();
-    setVolumePercent(getSavedVolume()); // Set volume speaker dari hasil memori
+    setVolumePercent(getSavedVolume());
 
-    // Inisialisasi Sensor Lingkungan & AI
     initSensors();
-    aiSensor_init(); // ✨ FIX: Inisialisasi memori AI Sensor
+    aiSensor_init();
 
-    // ==========================================
-    // 2. RENDER VISUAL DI BALIK LAYAR
-    // ==========================================
+    // 2. RENDER VISUAL
     showBootingScreen();
 
-    // ==========================================
-    // 3. THE PERFECT SYNC (AUDIO + FADE IN)
-    // ==========================================
+    // 3. FADE IN AUDIO & VISUAL
     unsigned long bootStartTime = millis();
-
-    // Tembakkan suara booting
     playRinchanSound(SND_BOOTING);
 
-    // Ambil target brightness dari memori
     int targetBrightness = getSavedBrightness();
-
-    // Efek Fade-In dari 0 menuju nilai Brightness memori
     for (int i = 0; i <= targetBrightness; i += 2)
     {
         setDisplayBrightness(i);
-        audioLoop(); // Pompa I2S
+        audioLoop();
         delay(15);
     }
 
-    // ==========================================
-    // 4. HOLD THE SCENE (Tahan 5 Detik)
-    // ==========================================
-    // Tahan visual booting selama sisa waktu 5 detik
+    // 4. HOLD THE SCENE
     while (millis() - bootStartTime < 5000)
     {
         audioLoop();
         delay(5);
     }
 
-    // ==========================================
-    // 5. TUGAS BERAT DIMULAI (WIFI & CLOUD)
-    // ==========================================
+    // 5. WIFI & CLOUD
     tft.fillScreen(TFT_BLACK);
-    drawEmoji(EMOTION_SLEEPY);
+    drawEmoji(EMOTION_IDLE); // Ganti Sleepy jadi Idle
     showDialogWidget("Mencari WiFi...");
 
     initWiFi();
 
-    // ==========================================
-    // 6. AUTENTIKASI / CLAIMING
-    // ==========================================
+    // ✨ SINKRONISASI JAM INTERNET (WIB = GMT+7 = 25200 detik)
+    if (isWiFiConnected())
+    {
+        configTime(7 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+    }
+
+    // 6. AUTENTIKASI
     if (isWiFiConnected())
     {
         showDialogWidget("Mengecek Token...");
         initAuth();
     }
 
-    // ==========================================
-    // 7. RUNTIME READY (SISTEM SIAP)
-    // ==========================================
+    // 7. RUNTIME READY
     if (isRuntimeReady())
     {
-        // Ubah mimik jadi standby
-        drawEmoji(EMOTION_IDLE);
-        showDialogWidget("Sistem Siap! Menunggu Perintah."); // Teks lebih efisien
+        drawTopBar(true, true, getRealTime(), "");
 
-        // Mulai WS dan Mic paling akhir
+        drawEmoji(EMOTION_IDLE);
+        showDialogWidget("Sistem Siap! Menunggu Perintah.");
+
         initWebSocket();
         initWakeNet();
 
-        // Aktifkan timer pembersih layar (hilang setelah 3 detik)
         bootMessageTimer = millis();
         clearBootMessage = true;
-    }
-    else
-    {
-        // Masuk Captive Portal
-        drawEmoji(EMOTION_UNCOMFORTABLE);
-        showDialogWidget("Mode Setup: Buka WiFi Rinchan");
     }
 }
 
 void loop()
 {
-    // 1. Jaga Captive Portal atau Auto-Reconnect WiFi
     handleWiFiLoop();
 
-    // 2. Eksekusi tugas utama HANYA jika internet terhubung DAN token sudah ada
     if (isRuntimeReady())
     {
-        // handleButtonLoop();
-        audioLoop();     // Jaga aliran I2S MP3
-        wsLoop();        // Jaga koneksi WebSocket
-        pomodoroLoop();  // Jaga logika timer Pomodoro
-        aiSensor_loop(); // ✨ FIX: Saraf refleks sensor jalan terus mengawasi ruangan
+        audioLoop();
+        wsLoop();
+        pomodoroLoop();
+        aiSensor_loop();
 
-        // Panggil pendeteksi WakeWord (Mic) di sini jika sudah dibuat loop-nya
-        // Contoh: wakenetLoop();
-        // (Pastikan di dalamnya ada pengecekan: if(pomodoro_isRunning()) return; agar mic mati saat fokus)
+        // ✨ MOTOR ANIMASI GIF UTAMA
+        playDisplayAnimation();
 
         // ==========================================
-        // 3. PEMBERSIH LAYAR OTOMATIS (NON-BLOCKING)
+        // ✨ LOGIKA SAKLAR MIC & TOP BAR
         // ==========================================
-        if (clearBootMessage && (millis() - bootMessageTimer >= 4000))
+        bool isFocusMode = (pomodoro_isRunning() && pomodoro_getCurrentMode() == "fokus");
+        // Kita tidak bisa langsung akses currentWidget, jadi deteksi dari cancelCurrentDialog
+        // atau anggap aman jika tidak ada interupsi audio panjang.
+        // Cara paling aman: Cek jika speaker I2S sedang bersuara (SFX ketik / Lagu).
+        bool isSpeakerLoud = audio_isPlaying();
+
+        bool shouldMicBeActive = (!isFocusMode && !isSpeakerLoud);
+
+        // Putar saklar hardware WakeNet
+        setMicMuted(!shouldMicBeActive);
+
+        // Update Layar Top Bar (Setiap 1 detik)
+        unsigned long currentMillis = millis();
+        static unsigned long lastTopBarUpdate = 0;
+        if (currentMillis - lastTopBarUpdate >= 1000)
         {
-            clearWidget();           // Hapus kotak dialog
-            drawEmoji(EMOTION_IDLE); // Kembalikan wajah ke normal
+            lastTopBarUpdate = currentMillis;
+
+            // Ambil Status Peringatan dari AI Sensor
+            String currentCond = aiSensor_getCurrentCondition();
+            String alertTxt = "";
+            if (currentCond != "Kondisi Optimal" && currentCond != "null" && currentCond != "")
+            {
+                alertTxt = "⚠️ " + currentCond;
+            }
+
+            // Render ke layar (Wifi, Mic, Jam, Teks Peringatan)
+            drawTopBar(isWiFiConnected(), shouldMicBeActive, getRealTime(), alertTxt);
+        }
+
+        // ==========================================
+        // PEMBERSIH LAYAR AWAL
+        // ==========================================
+        if (clearBootMessage && (currentMillis - bootMessageTimer >= 4000))
+        {
+            clearWidget();
+            drawEmoji(EMOTION_IDLE);
             clearBootMessage = false;
         }
 
         // ==========================================
-        // 4. TELEMETRY & PING (INTERVAL)
+        // TELEMETRY PING
         // ==========================================
-        unsigned long currentMillis = millis();
         if (currentMillis - lastActionTime >= RinchanConfig::Runtime::ACTION_INTERVAL_MS)
         {
             lastActionTime = currentMillis;
-
             if (isPingNext)
             {
                 sendPingWS();
@@ -179,7 +201,6 @@ void loop()
                 SensorData currentData = readAllSensors();
                 sendTelemetryWS(currentData);
             }
-
             isPingNext = !isPingNext;
         }
     }

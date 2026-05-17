@@ -284,3 +284,8 @@ void aiSensor_loop()
     lastAiSpokeTime = millis();
     currentCooldownMs = 5000;
 }
+
+String aiSensor_getCurrentCondition()
+{
+    return activeConditionFromAI;
+}

@@ -25,7 +25,6 @@ inline void playRinchanSound(SoundEvent event)
         playAudioSFX("/ai_notify.mp3");
         break;
     case SND_TEXT_BLIP:
-        // Blip sintetis dari kode (tanpa file), lebih stabil untuk efek typing.
         playTypingCodeClick();
         break;
     case SND_POMO_START:
@@ -40,5 +39,38 @@ inline void playRinchanSound(SoundEvent event)
     case SND_POMO_CANCEL:
         playAudioSFX("/pomo_cancel.wav");
         break;
+    }
+}
+
+// ✨ SFX BLOCKING: Putar dan TUNGGU sampai selesai sebelum lanjut
+// Mencegah konflik I2S dengan dialog typing yang datang setelahnya
+inline void playRinchanSoundBlocking(SoundEvent event)
+{
+    playRinchanSound(event);
+
+    unsigned long timeout = millis() + 10000; // Safety: max 10 detik
+    while (audio_isPlaying() && millis() < timeout)
+    {
+        audioLoop(); // Feed I2S decoder agar audio tidak putus
+        delay(1);
+    }
+}
+
+// ✨ ALARM BERULANG: Untuk notifikasi sesi Pomodoro selesai
+inline void playRinchanAlarm(int repeats = 1)
+{
+    for (int i = 0; i < repeats; i++)
+    {
+        playAudioSFX("/pomo_stop.wav");
+
+        unsigned long timeout = millis() + 10000; // pomo_stop.wav = 7 detik
+        while (audio_isPlaying() && millis() < timeout)
+        {
+            audioLoop();
+            delay(1);
+        }
+
+        if (i < repeats - 1)
+            delay(300); // Jeda antar pengulangan
     }
 }

@@ -12,6 +12,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
+extern String globalSensorAlert;
 namespace
 {
     WebSocketsClient webSocket;
@@ -49,31 +50,67 @@ void routeIncomingMessage(const String &msg)
         String text = payload["text"].as<String>();
         Serial.printf("[AI] Emosi: %s | Teks: %s\n", emotionStr.c_str(), text.c_str());
 
-        // Parse string dari backend ke Enum C++ kita
         Emotion aiEmo = parseEmotionString(emotionStr);
+        bool isRecovery = (aiEmo == EMOTION_RECOVERY);
 
         forceClearDialog();
         drawEmoji(aiEmo); // Render emosi interupsi / pemulihan
 
-        // Fungsi ini akan menahan kode sampai teks selesai diketik & dibaca user (5 detik)
+        // ==========================================================
+        // ✨ LOGIKA UI TOP BAR (DIPERBAIKI)
+        // ==========================================================
+        String newCond = payload.containsKey("newCondition") ? payload["newCondition"].as<String>() : "";
+
+        if (isRecovery)
+        {
+            // PEMULIHAN: Tampilkan label spesifik di Top Bar SELAMA dialog aktif
+            if (newCond != "")
+                globalSensorAlert = newCond;
+            forceUpdateTopBarAlert(globalSensorAlert);
+
+            // Jeda animasi 2.5s agar user melihat Rinchan lega
+            unsigned long reactionStart = millis();
+            while (millis() - reactionStart < 2500)
+            {
+                playDisplayAnimation();
+                delay(10);
+            }
+        }
+        else if (aiEmo != EMOTION_IDLE)
+        {
+            // INTERUPSI: Set alert dan tampilkan di Top Bar selama belum dipulihkan
+            if (newCond != "")
+                globalSensorAlert = newCond;
+            forceUpdateTopBarAlert(globalSensorAlert);
+        }
+
+        // ==========================================================
+        // Tampilkan Dialog Box (blocking sampai selesai dibaca)
+        // ==========================================================
         showDialogWidget(text);
 
-        // ✨ FIX: Update memori sensor AI jika ada perubahan kondisi
+        // ==========================================================
+        // ✨ Update memori sensor DENGAN cooldown yang tepat
+        // ==========================================================
         if (payload.containsKey("newCondition"))
         {
-            aiSensor_updateMemory(payload["newCondition"].as<String>());
+            // isRecovery=true  → activeConditionFromAI = "Kondisi Optimal" (LOCK DILEPAS) + cooldown aktif
+            // isRecovery=false → activeConditionFromAI = newCond (LOCK AKTIF) + cooldown = 0
+            aiSensor_updateMemoryWithCooldown(payload["newCondition"].as<String>(), isRecovery);
         }
 
-        // ✨ LOGIKA FLOW BARU:
-        // Setelah teks selesai dibaca dan kotak hilang, cek apakah ini sensor pemulihan.
-        // Jika YA, otomatis kembalikan wajah ke IDLE.
-        // Jika TIDAK, wajah interupsi (panas/dingin) akan terus tertahan di layar.
-        if (aiEmo == EMOTION_RECOVERY)
+        // ==========================================================
+        // ✨ SETELAH DIALOG SELESAI: Reset UI jika pemulihan
+        // ==========================================================
+        if (isRecovery)
         {
             drawEmoji(EMOTION_IDLE);
+
+            // Reset Top Bar & globalSensorAlert → siap interupsi baru
+            forceUpdateTopBarAlert("");
+            globalSensorAlert = "";
         }
     }
-
     // ✨ FIX: 3. KHUSUS UPDATE MEMORI SENSOR (Jika kondisi SAMA / AI Diam)
     else if (type == "UPDATE_SENSOR_STATE")
     {

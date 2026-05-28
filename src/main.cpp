@@ -15,9 +15,7 @@
 #include <TFT_eSPI.h>
 #include "voice_recognition/wakenet.h"
 
-// ✨ Jembatan ke file wakenet.cpp untuk saklar Mic
-extern void setMicMuted(bool muted);
-
+String globalSensorAlert = "";
 namespace
 {
     unsigned long lastActionTime = 0;
@@ -152,10 +150,13 @@ void loop()
         // Cara paling aman: Cek jika speaker I2S sedang bersuara (SFX ketik / Lagu).
         bool isSpeakerLoud = audio_isPlaying();
 
-        bool shouldMicBeActive = (!isFocusMode && !isSpeakerLoud);
+        bool shouldWakeNetBeActive = (!isFocusMode && !isSpeakerLoud);
 
-        // Putar saklar hardware WakeNet
-        setMicMuted(!shouldMicBeActive);
+        // WakeNet dimatikan saat fokus atau speaker aktif, tapi mic tetap hidup.
+        setWakeNetEnabled(shouldWakeNetBeActive);
+
+        // Mic di-mute hanya saat speaker aktif untuk hindari feedback.
+        setMicMuted(isSpeakerLoud);
 
         // Update Layar Top Bar (Setiap 1 detik)
         unsigned long currentMillis = millis();
@@ -164,16 +165,16 @@ void loop()
         {
             lastTopBarUpdate = currentMillis;
 
-            // Ambil Status Peringatan dari AI Sensor
-            String currentCond = aiSensor_getCurrentCondition();
+            // ✨ Top Bar Alert: Hanya tampilkan saat Pomodoro aktif
+            // globalSensorAlert di-manage oleh websocket.cpp saat menerima AI_RESPONSE
             String alertTxt = "";
-            if (currentCond != "Kondisi Optimal" && currentCond != "null" && currentCond != "")
+            if (pomodoro_isRunning() && globalSensorAlert != "" && globalSensorAlert != "Kondisi Optimal")
             {
-                alertTxt = "⚠️ " + currentCond;
+                alertTxt = globalSensorAlert;
             }
 
             // Render ke layar (Wifi, Mic, Jam, Teks Peringatan)
-            drawTopBar(isWiFiConnected(), shouldMicBeActive, getRealTime(), alertTxt);
+            drawTopBar(isWiFiConnected(), shouldWakeNetBeActive, getRealTime(), alertTxt);
         }
 
         // ==========================================

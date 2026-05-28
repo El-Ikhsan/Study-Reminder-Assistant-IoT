@@ -33,4 +33,5 @@ void drawEmoji(Emotion emoji);
 void showDialogWidget(String text);
 void updatePomodoroWidget(int min, int sec, bool isBreak, int cycle, String media);
 void clearWidget();
+void forceUpdateTopBarAlert(String alertText);
 void forceClearDialog();

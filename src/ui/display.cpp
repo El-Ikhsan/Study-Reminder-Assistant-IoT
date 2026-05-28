@@ -47,57 +47,80 @@ namespace
 // 0. TOP BAR: STATUS WIFI & WAKENET (MIC)
 // ==========================================
 // Panggil ini di main.cpp setiap ada perubahan status WiFi atau WakeNet
+static bool lastWifi = false;
+static bool lastMic = false;
+static String lastTimeStr = "";
+static String lastAlertText = "";
+static bool firstDrawTopBar = true;
+
 void drawTopBar(bool isWifiConnected, bool isMicActive, String timeStr, String alertText)
 {
-    // Area Y: 0 sampai 19
-    tft.fillRect(0, 0, 320, 20, TFT_BLACK);
-    tft.drawLine(0, 19, 320, 19, tft.color565(50, 50, 50)); // Garis pembatas bawah
-
-    // ==========================================
-    // KIRI: Ikon Status (Load dari LittleFS)
-    // ==========================================
-    // Asumsi ukuran ikon adalah 16x16 pixel.
-    // Y=2 agar ikon pas berada di tengah bar yang tingginya 20px.
-
-    // 1. Ikon WiFi (Posisi X = 5)
-    if (isWifiConnected)
+    // 1. Gambar dasar (HANYA DIEKSEKUSI 1x SAAT BOOTING)
+    if (firstDrawTopBar)
     {
-        TJpgDec.drawFsJpg(5, 2, "/wifi_on.jpg", LittleFS);
-    }
-    else
-    {
-        TJpgDec.drawFsJpg(5, 2, "/wifi_off.jpg", LittleFS);
+        tft.fillRect(0, 0, 320, 20, TFT_BLACK);
+        tft.drawLine(0, 19, 320, 19, tft.color565(50, 50, 50));
     }
 
-    // 2. Ikon Mic (Posisi X = 25)
-    // Jarak 25 didapat dari: X awal (5) + Lebar Ikon (16) + Spasi (4)
-    if (isMicActive)
+    // 2. Update Ikon WiFi (HANYA JIKA STATUS BERUBAH)
+    if (isWifiConnected != lastWifi || firstDrawTopBar)
     {
-        TJpgDec.drawFsJpg(25, 2, "/mic_on.jpg", LittleFS);
-    }
-    else
-    {
-        TJpgDec.drawFsJpg(25, 2, "/mic_off.jpg", LittleFS);
+        tft.fillRect(5, 2, 16, 16, TFT_BLACK); // Sapu bersih area ikon saja
+        TJpgDec.drawFsJpg(5, 2, isWifiConnected ? "/wifi_on.jpg" : "/wifi_off.jpg", LittleFS);
+        lastWifi = isWifiConnected;
     }
 
-    // ==========================================
-    // TENGAH: Jam Digital
-    // ==========================================
+    // 3. Update Ikon Mic (HANYA JIKA STATUS BERUBAH)
+    if (isMicActive != lastMic || firstDrawTopBar)
+    {
+        tft.fillRect(25, 2, 16, 16, TFT_BLACK); // Sapu bersih area ikon saja
+        TJpgDec.drawFsJpg(25, 2, isMicActive ? "/mic_on.jpg" : "/mic_off.jpg", LittleFS);
+        lastMic = isMicActive;
+    }
+
+    // 4. Update Jam (HANYA JIKA DETIK/MENIT BERUBAH)
+    if (timeStr != lastTimeStr || firstDrawTopBar)
+    {
+        tft.fillRect(100, 0, 120, 18, TFT_BLACK); // Sapu bersih area teks jam saja
+        tft.setTextSize(1);
+        tft.setTextColor(TFT_WHITE);
+        tft.drawCentreString(timeStr, 160, 5, 1);
+        lastTimeStr = timeStr;
+    }
+
+    // 5. Update Teks Alert (HANYA JIKA STATUS SENSOR BERUBAH)
+    if (alertText != lastAlertText || firstDrawTopBar)
+    {
+        tft.fillRect(220, 0, 100, 18, TFT_BLACK); // Sapu bersih area teks alert saja
+
+        // Jangan tampilkan teks jika kosong atau kondisi sedang optimal
+        if (alertText != "" && alertText != "Kondisi Optimal")
+        {
+            tft.setTextColor(TFT_ORANGE);
+            tft.drawRightString(alertText, 315, 5, 1);
+        }
+        lastAlertText = alertText;
+    }
+
+    firstDrawTopBar = false; // Kunci gambar dasar
+}
+
+void forceUpdateTopBarAlert(String alertText)
+{
+    tft.fillRect(220, 0, 100, 18, TFT_BLACK);
+
+    // ✨ KEMBALIKAN KE KUAS KECIL SEBELUM MENGGAMBAR!
     tft.setTextSize(1);
-    tft.setTextColor(TFT_WHITE);
-    // drawCentreString otomatis memposisikan teks di tengah kordinat X (160)
-    tft.drawCentreString(timeStr, 160, 5, 1);
 
-    // ==========================================
-    // KANAN: Teks Peringatan Sensor (Rata Kanan)
-    // ==========================================
-    if (alertText != "")
+    if (alertText != "" && alertText != "Kondisi Optimal")
     {
         tft.setTextColor(TFT_ORANGE);
-        // drawRightString otomatis meratakan teks ke kiri dari titik X (315)
         tft.drawRightString(alertText, 315, 5, 1);
     }
+
+    lastAlertText = alertText; // Sinkronisasi memori
 }
+
 // ==========================================
 // ✨ FUNGSI CALLBACK: Menggambar GIF frame by frame
 // ==========================================
@@ -113,12 +136,14 @@ void GIFDraw(GIFDRAW *pDraw)
     y = pDraw->iY + pDraw->y;
 
     if (y < 20)
+        return; // Top Bar Aman
+
+    // ✨ ATURAN BARU: Jika dialog aktif, JANGAN GAMBAR GIF SAMA SEKALI (Animasi Berhenti)
+    if (currentWidget == WIDGET_DIALOG)
         return;
-    int bottomLimit = (currentWidget == WIDGET_NONE) ? 240 : 175;
-    if (currentWidget == WIDGET_NONE && (currentEmoji == EMOTION_IDLE || currentEmoji == EMOTION_LISTENING))
-    {
-        bottomLimit = 240;
-    }
+
+    // ✨ Jika Pomodoro aktif, potong di 175. Jika tidak ada widget, hajar sampai 240.
+    int bottomLimit = (currentWidget == WIDGET_POMODORO) ? 175 : 240;
     if (y >= bottomLimit)
         return;
 
@@ -126,7 +151,6 @@ void GIFDraw(GIFDRAW *pDraw)
     s = pDraw->pPixels;
     for (x = 0; x < iWidth; x++)
     {
-        // Murni membaca palet warna, tanpa mengecek transparansi!
         usTemp[x] = usPalette[*s++];
     }
 
@@ -312,15 +336,17 @@ void showDialogWidget(String text)
     cancelCurrentDialog = false;
     currentWidget = WIDGET_DIALOG;
 
-    // 1. Siapkan Kanvas (Sprite)
-    dialogSprite.createSprite(320, 65);
+    // 1. Siapkan Kanvas (Sprite) RAKSASA: Lebar 320, Tinggi 220
+    dialogSprite.createSprite(320, 220);
     dialogSprite.fillSprite(TFT_BLACK);
-    dialogSprite.fillRoundRect(5, 2, 310, 61, 5, tft.color565(20, 20, 30));
-    dialogSprite.drawRoundRect(5, 2, 310, 61, 5, TFT_CYAN);
+
+    // Kotak dialog besar menutupi area animasi
+    dialogSprite.fillRoundRect(5, 5, 310, 210, 5, tft.color565(20, 20, 30));
+    dialogSprite.drawRoundRect(5, 5, 310, 210, 5, TFT_CYAN);
     dialogSprite.setTextColor(TFT_WHITE);
     dialogSprite.setTextSize(2);
 
-    int cX = 15, cY = 10;
+    int cX = 15, cY = 15; // Kursor mulai dari atas kotak
     dialogSprite.setCursor(cX, cY);
 
     int charCount = 0;
@@ -329,7 +355,7 @@ void showDialogWidget(String text)
         if (cancelCurrentDialog)
             break;
 
-        // 2. Logika Word-Wrap (Bungkus Kata)
+        // 2. Logika Word-Wrap
         if (text[i] != ' ' && (i == 0 || text[i - 1] == ' '))
         {
             int wordWidth = 0;
@@ -341,19 +367,17 @@ void showDialogWidget(String text)
                 cX = 15;
                 cY += 24; // Turun ke baris berikutnya
 
-                // ✨ JIKA TEKS MELEBIHI 2 BARIS (Masuk baris ke-3)
-                if (cY > 40)
+                // ✨ JIKA TEKS MELEBIHI KOTAK (Masuk melebihi Y = 190)
+                if (cY > 190)
                 {
-                    // ❌ Jeda 2.5 Detik (pageWait) DIHAPUS TOTAL!
-
-                    // Langsung format ulang kanvas menjadi hitam seperti Subtitle baru
+                    // Bersihkan kanvas, buat halaman baru
                     dialogSprite.fillSprite(TFT_BLACK);
-                    dialogSprite.fillRoundRect(5, 2, 310, 61, 5, tft.color565(20, 20, 30));
-                    dialogSprite.drawRoundRect(5, 2, 310, 61, 5, TFT_CYAN);
+                    dialogSprite.fillRoundRect(5, 5, 310, 210, 5, tft.color565(20, 20, 30));
+                    dialogSprite.drawRoundRect(5, 5, 310, 210, 5, TFT_CYAN);
                     dialogSprite.setTextColor(TFT_WHITE);
 
                     cX = 15;
-                    cY = 10; // Kembalikan kursor ke atas
+                    cY = 15; // Kembalikan kursor ke atas
                 }
                 dialogSprite.setCursor(cX, cY);
             }
@@ -366,9 +390,11 @@ void showDialogWidget(String text)
         dialogSprite.print(text[i]);
         cX += 12;
         charCount++;
-        dialogSprite.pushSprite(0, 175);
 
-        // 4. Mainkan SFX (Suara Efek Ketikan)
+        // ✨ TEMBAKKAN KE LAYAR DIMULAI DARI BAWAH TOP BAR (Y = 20)
+        dialogSprite.pushSprite(0, 20);
+
+        // 4. Mainkan SFX
         bool makeSound = (text[i] != ' ' && charCount % 2 == 1);
         playTypingSync(makeSound);
     }
@@ -376,7 +402,7 @@ void showDialogWidget(String text)
     playTypingSync(false);
     i2s_zero_dma_buffer((i2s_port_t)I2S_NUM_0);
 
-    // ✨ 5. JEDA AKHIR (Dipertahankan agar user bisa membaca)
+    // ✨ 5. JEDA AKHIR
     if (!cancelCurrentDialog)
     {
         unsigned long readStart = millis();
@@ -399,13 +425,13 @@ void showDialogWidget(String text)
 // ==========================================
 void clearWidget()
 {
-    tft.fillRect(0, 175, 320, 65, TFT_BLACK);
+    // Sapu bersih seluruh area bawah Top Bar
+    tft.fillRect(0, 20, 320, 220, TFT_BLACK);
     currentWidget = WIDGET_NONE;
 
-    // Saat widget dibersihkan, trigger ulang drawEmoji agar
-    // jika dia Idle/Mendengar, layarnya langsung merender animasi sampai bawah.
+    // Pancing ulang drawEmoji agar GIF dipanggil kembali dari awal (Frame 1)
     Emotion temp = currentEmoji;
-    currentEmoji = EMOTION_IDLE; // Hack memancing refresh
+    currentEmoji = EMOTION_IDLE;
     drawEmoji(temp);
 }
 
@@ -415,49 +441,90 @@ void updatePomodoroWidget(int min, int sec, bool isBreak, int cycle, String medi
     if (currentWidget == WIDGET_DIALOG)
         return;
 
+    // ==========================================
+    // 🧠 VARIABEL INGATAN (State Tracking)
+    // ==========================================
+    static bool lastIsBreak = false;
+    static int lastCycle = -1;
+    static String lastMedia = "";
+    static int lastMin = -1;
+    static int lastSec = -1;
+    static bool firstDrawPomo = true;
+
+    // Jika widget baru saja muncul (sebelumnya layar bersih/mode lain)
     if (currentWidget != WIDGET_POMODORO)
     {
-        // Blok seluruh area bawah dengan warna gelap (Abu-abu sangat tua untuk bedakan dengan kanvas)
+        // Blok seluruh area bawah HANYA 1X SAAT MUNCUL
         tft.fillRect(0, 175, 320, 65, tft.color565(15, 15, 15));
-
-        // Buat garis pemisah atas widget
         tft.drawLine(0, 175, 320, 175, TFT_DARKGREY);
+
         currentWidget = WIDGET_POMODORO;
+        firstDrawPomo = true; // Paksa render ulang seluruh komponen
     }
 
-    // A. AREA KIRI: INFO DETAIL (Membersihkan blok kiri saja)
-    tft.fillRect(5, 178, 175, 60, tft.color565(15, 15, 15));
-
-    // 1. Teks Mode Fokus/Istirahat
-    tft.setTextSize(2);
-    if (isBreak)
+    // ==========================================
+    // A. AREA KIRI: INFO DETAIL
+    // Update HANYA jika fase, siklus, media berubah, atau baru pertama muncul!
+    // ==========================================
+    if (isBreak != lastIsBreak || cycle != lastCycle || media != lastMedia || firstDrawPomo)
     {
-        tft.setTextColor(TFT_GREEN);
-        tft.drawString("ISTIRAHAT", 10, 182);
+        tft.fillRect(5, 178, 175, 60, tft.color565(15, 15, 15)); // Sapu area kiri
+
+        // 1. Teks Mode Fokus/Istirahat
+        tft.setTextSize(2);
+        if (isBreak)
+        {
+            tft.setTextColor(TFT_GREEN);
+            tft.drawString("ISTIRAHAT", 10, 182);
+        }
+        else
+        {
+            tft.setTextColor(TFT_ORANGE);
+            tft.drawString("FOKUS BELAJAR", 10, 182);
+        }
+
+        // 2. Teks Siklus & Media Belajar
+        tft.setTextSize(1);
+        tft.setTextColor(TFT_WHITE);
+        tft.drawString("Siklus: " + String(cycle) + "/4", 10, 205);
+
+        String displayMedia = media;
+        if (displayMedia.length() > 15)
+            displayMedia = displayMedia.substring(0, 12) + "...";
+        tft.drawString("Media: " + displayMedia, 10, 220);
+
+        // Simpan ke ingatan
+        lastIsBreak = isBreak;
+        lastCycle = cycle;
+        lastMedia = media;
     }
-    else
+
+    // ==========================================
+    // B. AREA KANAN: TIMER RAKSASA
+    // Update HANYA setiap kali detik atau menit berubah!
+    // ==========================================
+    if (min != lastMin || sec != lastSec || firstDrawPomo)
     {
-        tft.setTextColor(TFT_ORANGE);
-        tft.drawString("FOKUS KERJA", 10, 182);
+        char timeStr[6];
+        sprintf(timeStr, "%02d:%02d", min, sec);
+
+        // ✨ THE MAGIC: Teks dengan background warna abu-abu gelap
+        // Ini akan menimpa angka lama TANPA perlu dibersihkan pakai fillRect!
+        tft.setTextColor(TFT_WHITE, tft.color565(15, 15, 15));
+
+        // ✨ THE MAGIC 2: Beri "Bantalan" pada teks sebesar 120 piksel.
+        // Ini memastikan sisa-sisa piksel dari angka sebelumnya tersapu bersih!
+        tft.setTextPadding(120);
+
+        tft.drawCentreString(timeStr, 250, 195, 4);
+
+        // Kembalikan padding ke 0 agar tidak merusak teks lain di fungsi berbeda
+        tft.setTextPadding(0);
+
+        // Simpan ke ingatan
+        lastMin = min;
+        lastSec = sec;
     }
 
-    // 2. Teks Siklus & Media Belajar (Font lebih kecil)
-    tft.setTextSize(1);
-    tft.setTextColor(TFT_WHITE);
-    tft.drawString("Siklus: " + String(cycle) + "/4", 10, 205);
-
-    // Batasi panjang string media agar tidak tabrakan dengan timer
-    if (media.length() > 15)
-        media = media.substring(0, 12) + "...";
-    tft.drawString("Media: " + media, 10, 220);
-
-    // B. AREA KANAN: TIMER RAKSASA (Membersihkan blok kanan saja)
-    tft.fillRect(180, 178, 135, 60, tft.color565(15, 15, 15));
-
-    char timeStr[6];
-    sprintf(timeStr, "%02d:%02d", min, sec);
-    tft.setTextColor(TFT_WHITE);
-
-    // Menggunakan font besar (Size 4 atau 5) ditempatkan rata kanan
-    tft.drawCentreString(timeStr, 250, 195, 4);
+    firstDrawPomo = false; // Kunci render dasar
 }

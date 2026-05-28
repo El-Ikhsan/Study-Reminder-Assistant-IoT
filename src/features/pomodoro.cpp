@@ -6,6 +6,7 @@
 #include "features/ai_sensor.h"
 #include <ArduinoJson.h>
 
+extern String globalSensorAlert;
 namespace
 {
     constexpr unsigned long ONE_SECOND_MS = 1000;
@@ -53,13 +54,15 @@ namespace
         Serial.printf("\n[⏳] Memulai Mode: %s | Durasi: %d menit | Siklus: %d/%d | Media: %s\n",
                       state.mode.c_str(), durationMin, state.currentCycle, state.targetCycles, state.media.c_str());
 
+        // ✨ FIX: SFX BLOCKING agar tidak dibunuh oleh showDialogWidget
+        // saat AI merespons fase awal sesaat setelah timer dimulai
         if (mode == "fokus")
         {
-            playRinchanSound(SND_POMO_START);
+            playRinchanSoundBlocking(SND_POMO_START);
         }
         else
         {
-            playRinchanSound(SND_POMO_SWITCH);
+            playRinchanSoundBlocking(SND_POMO_SWITCH);
         }
 
         // Pengiriman Fase Awal DIHAPUS dari sini agar tidak Stack Overflow!
@@ -81,9 +84,15 @@ namespace
             {
                 Serial.println("[🎉] SEMUA SIKLUS POMODORO SELESAI!");
                 state.isRunning = false;
+                globalSensorAlert = "";
 
-                playRinchanSound(SND_POMO_STOP);
+                // ✨ FIX: Alarm berulang BLOCKING dulu (user dengar alarm 3x)
+                // Baru setelah alarm selesai, kirim ke backend
+                playRinchanAlarm(3);
+
                 clearWidget();
+                forceClearDialog();
+                drawEmoji(EMOTION_IDLE);
 
                 if (wsConnected && !state.sessionId.isEmpty())
                 {
@@ -100,10 +109,6 @@ namespace
                 }
 
                 state.sessionId = "";
-
-                forceClearDialog();
-                drawEmoji(EMOTION_IDLE);
-                showDialogWidget("Kerja Bagus, Shimarin!");
             }
             else
             {
@@ -182,13 +187,15 @@ void pomodoro_processCommand(const String &type, JsonObject payload)
         state.isRunning = false;
         state.sessionId = "";
 
-        // ✨ Render UI Dulu agar RAM bernapas sebelum memutar Audio
         clearWidget();
         forceClearDialog();
         drawEmoji(EMOTION_IDLE);
-        showDialogWidget("Yah, dibatalkan...");
 
-        playRinchanSound(SND_POMO_CANCEL);
+        // ✨ FIX: Play cancel SFX BLOCKING dulu agar terdengar
+        // SEBELUM dialog mengambil alih jalur I2S untuk typing
+        playRinchanSoundBlocking(SND_POMO_CANCEL);
+
+        showDialogWidget("Yah, dibatalkan...");
     }
 }
 

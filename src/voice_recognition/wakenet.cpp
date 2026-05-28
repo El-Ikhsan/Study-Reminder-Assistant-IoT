@@ -21,9 +21,17 @@ volatile int currentNoiseLevel = 30;
 // Flag: true saat speaker sedang memutar audio → mic dikunci agar tidak self-feedback
 volatile bool isSpeakerPlaying = false;
 
+// Flag: true saat WakeNet (wake word) aktif
+volatile bool isWakeNetEnabled = true;
+
 void setMicMuted(bool muted)
 {
     isSpeakerPlaying = muted;
+}
+
+void setWakeNetEnabled(bool enabled)
+{
+    isWakeNetEnabled = enabled;
 }
 
 // ==========================================
@@ -164,7 +172,7 @@ void audio_detect_task(void *arg)
             // ==========================================
             // 1. JIKA WAKE WORD TERDETEKSI
             // ==========================================
-            if (res->wakeup_state == WAKENET_DETECTED)
+            if (isWakeNetEnabled && res->wakeup_state == WAKENET_DETECTED)
             {
                 Serial.println("\n[🔥] WAKE WORD DETECTED: ALEXA!\n");
 

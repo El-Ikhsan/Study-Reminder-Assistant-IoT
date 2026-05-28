@@ -106,28 +106,55 @@ void aiSensor_forceReset()
     Serial.println("[🧠] Memori & Cooldown AI Sensor di-reset untuk sesi baru!");
 }
 
+// ✨ UPDATE: Fungsi lama tetap ada untuk kompatibilitas
 void aiSensor_updateMemory(const String &newCondition)
 {
     if (newCondition != "null" && newCondition != "")
     {
         activeConditionFromAI = newCondition;
         Serial.println("\n[🧠 MEMORI AI] Diperbarui menjadi: " + activeConditionFromAI);
+    }
+}
 
-        // ✨ FIX 4: ATUR COOLDOWN SAAT AI SELESAI BICARA
-        lastAiSpokeTime = millis();
-        if (DEMO_MODE_SIDANG)
+// ✨ NEW: Fungsi baru yang membedakan cooldown interupsi vs pemulihan
+void aiSensor_updateMemoryWithCooldown(const String &newCondition, bool isRecovery)
+{
+    if (newCondition != "null" && newCondition != "")
+    {
+        // ✨ KUNCI: Saat pemulihan, SELALU set ke "Kondisi Optimal" agar lock dilepas
+        // Label spesifik (misal "Suhu Sejuk") ditampilkan di top bar oleh websocket.cpp
+        if (isRecovery)
         {
-            currentCooldownMs = 15000; // Demo: Jeda cuma 15 detik
+            activeConditionFromAI = "Kondisi Optimal";
+            Serial.println("\n[🧠 MEMORI AI] PEMULIHAN → Lock dilepas, kembali ke: Kondisi Optimal");
         }
         else
         {
-            // Realita: Beri napas 2 menit kalau habis pemulihan, 1 menit kalau diinterupsi
-            if (activeConditionFromAI == "Kondisi Optimal")
-                currentCooldownMs = 120000;
-            else
-                currentCooldownMs = 60000;
+            activeConditionFromAI = newCondition;
+            Serial.println("\n[🧠 MEMORI AI] INTERUPSI → Lock aktif pada: " + activeConditionFromAI);
         }
-        Serial.printf("[⏳] Asisten menahan diri. Cooldown disetel %lu ms\n\n", currentCooldownMs);
+    }
+
+    if (isRecovery)
+    {
+        // PEMULIHAN: Beri cooldown sebelum bisa interupsi baru
+        lastAiSpokeTime = millis();
+        if (DEMO_MODE_SIDANG)
+        {
+            currentCooldownMs = 15000; // Demo: 15 detik
+        }
+        else
+        {
+            currentCooldownMs = 120000; // Realita: 2 menit
+        }
+        Serial.printf("[⏳] Cooldown PEMULIHAN disetel %lu ms\n\n", currentCooldownMs);
+    }
+    else
+    {
+        // INTERUPSI: Tanpa delay! Langsung bisa deteksi pemulihan
+        lastAiSpokeTime = 0;
+        currentCooldownMs = 0;
+        Serial.println("[⚡] Cooldown INTERUPSI = 0ms (siap deteksi pemulihan)\n");
     }
 }
 
@@ -137,8 +164,6 @@ void aiSensor_loop()
         return;
 
     // ✨ FIX FINAL UX: GEMBOK SPEAKER (ANTI-TABRAKAN)
-    // Jika Rinchan sedang berbicara, BEKUKAN seluruh proses sensor.
-    // Timer debouncing akan berhenti, mencegah data baru menimpa render UI yang sedang berjalan.
     if (audio_isPlaying())
     {
         return;
@@ -146,8 +171,8 @@ void aiSensor_loop()
 
     unsigned long currentMillis = millis();
 
-    // ✨ FIX 5: BLOKIR SENSOR JIKA AI SEDANG COOLDOWN
-    // Asisten "tutup mata" sementara agar pengguna punya waktu memperbaiki ruangan
+    // ✨ FIX: Cooldown HANYA berlaku setelah pemulihan (bukan interupsi)
+    // Setelah interupsi, currentCooldownMs = 0 jadi blok ini di-skip
     if (currentCooldownMs > 0 && (currentMillis - lastAiSpokeTime < currentCooldownMs))
     {
         return;
@@ -170,95 +195,203 @@ void aiSensor_loop()
 
     bool isEventConfirmed = false;
 
-    // --- Suhu ---
-    if (currentTempCat != lastTempCat)
-    {
-        if (currentTempCat == pendingTempCat)
-        {
-            tempConfirmCount++;
-            if (tempConfirmCount >= TEMP_CONFIRM_NEEDED)
-            {
-                Serial.printf("[\u2705 KONFIRMASI SUHU] %d → %d\n", lastTempCat, currentTempCat);
-                lastTempCat = currentTempCat;
-                tempConfirmCount = 0;
-                isEventConfirmed = true;
-            }
-        }
-        else
-        {
-            pendingTempCat = currentTempCat;
-            tempConfirmCount = 1;
-        }
-    }
-    else
-    {
-        pendingTempCat = lastTempCat;
-        tempConfirmCount = 0;
-    }
+    // ====================================================================
+    // ✨ LOGIKA KUNCI OTOMATIS ESP32 (EDGE COMPUTING LOCK) — DIPERBAIKI
+    // ====================================================================
+    bool isLocked = (activeConditionFromAI != "Kondisi Optimal");
+    bool lockTemp = isLocked && (activeConditionFromAI.indexOf("Suhu") >= 0);
+    bool lockNoise = isLocked && (activeConditionFromAI.indexOf("Suara") >= 0);
+    bool lockLight = isLocked && (activeConditionFromAI.indexOf("Cahaya") >= 0);
 
-    // --- Kebisingan ---
-    if (currentNoiseCat != lastNoiseCat)
+    if (isLocked)
     {
-        if (currentNoiseCat == pendingNoiseCat)
-        {
-            noiseConfirmCount++;
-            if (noiseConfirmCount >= NOISE_CONFIRM_NEEDED)
-            {
-                Serial.printf("[\u2705 KONFIRMASI NOISE] %d → %d\n", lastNoiseCat, currentNoiseCat);
-                lastNoiseCat = currentNoiseCat;
-                noiseConfirmCount = 0;
-                isEventConfirmed = true;
-            }
-        }
-        else
-        {
-            pendingNoiseCat = currentNoiseCat;
-            noiseConfirmCount = 1;
-        }
-    }
-    else
-    {
-        pendingNoiseCat = lastNoiseCat;
-        noiseConfirmCount = 0;
-    }
+        // ================================================================
+        // 🔒 LOCKED: HANYA pantau sensor yang sedang di-interupsi
+        // Sensor lain DIABAIKAN TOTAL (tidak ada debounce yang berjalan)
+        // ================================================================
 
-    // --- Cahaya ---
-    if (currentLightCat != lastLightCat)
-    {
-        if (currentLightCat == pendingLightCat)
+        if (lockLight)
         {
-            lightConfirmCount++;
-            if (lightConfirmCount >= LIGHT_CONFIRM_NEEDED)
+            // Hanya pantau Cahaya
+            if (currentLightCat != lastLightCat)
             {
-                Serial.printf("[\u2705 KONFIRMASI CAHAYA] %d → %d\n", lastLightCat, currentLightCat);
-                lastLightCat = currentLightCat;
+                if (currentLightCat == pendingLightCat)
+                {
+                    lightConfirmCount++;
+                    if (lightConfirmCount >= LIGHT_CONFIRM_NEEDED)
+                    {
+                        Serial.printf("[✅ KONFIRMASI CAHAYA] %d → %d\n", lastLightCat, currentLightCat);
+                        lastLightCat = currentLightCat;
+                        lightConfirmCount = 0;
+                        isEventConfirmed = true;
+                    }
+                }
+                else
+                {
+                    pendingLightCat = currentLightCat;
+                    lightConfirmCount = 1;
+                }
+            }
+            else
+            {
+                pendingLightCat = lastLightCat;
                 lightConfirmCount = 0;
-                isEventConfirmed = true;
             }
         }
-        else
+        else if (lockTemp)
         {
-            pendingLightCat = currentLightCat;
-            lightConfirmCount = 1;
+            // Hanya pantau Suhu
+            if (currentTempCat != lastTempCat)
+            {
+                if (currentTempCat == pendingTempCat)
+                {
+                    tempConfirmCount++;
+                    if (tempConfirmCount >= TEMP_CONFIRM_NEEDED)
+                    {
+                        Serial.printf("[✅ KONFIRMASI SUHU] %d → %d\n", lastTempCat, currentTempCat);
+                        lastTempCat = currentTempCat;
+                        tempConfirmCount = 0;
+                        isEventConfirmed = true;
+                    }
+                }
+                else
+                {
+                    pendingTempCat = currentTempCat;
+                    tempConfirmCount = 1;
+                }
+            }
+            else
+            {
+                pendingTempCat = lastTempCat;
+                tempConfirmCount = 0;
+            }
+        }
+        else if (lockNoise)
+        {
+            // Hanya pantau Kebisingan
+            if (currentNoiseCat != lastNoiseCat)
+            {
+                if (currentNoiseCat == pendingNoiseCat)
+                {
+                    noiseConfirmCount++;
+                    if (noiseConfirmCount >= NOISE_CONFIRM_NEEDED)
+                    {
+                        Serial.printf("[✅ KONFIRMASI NOISE] %d → %d\n", lastNoiseCat, currentNoiseCat);
+                        lastNoiseCat = currentNoiseCat;
+                        noiseConfirmCount = 0;
+                        isEventConfirmed = true;
+                    }
+                }
+                else
+                {
+                    pendingNoiseCat = currentNoiseCat;
+                    noiseConfirmCount = 1;
+                }
+            }
+            else
+            {
+                pendingNoiseCat = lastNoiseCat;
+                noiseConfirmCount = 0;
+            }
         }
     }
     else
     {
-        pendingLightCat = lastLightCat;
-        lightConfirmCount = 0;
+        // ================================================================
+        // 🔓 UNLOCKED: Pantau SEMUA sensor, kirim payload lengkap
+        // Backend yang menentukan prioritas interupsi
+        // ================================================================
+
+        // --- Cahaya ---
+        if (currentLightCat != lastLightCat)
+        {
+            if (currentLightCat == pendingLightCat)
+            {
+                lightConfirmCount++;
+                if (lightConfirmCount >= LIGHT_CONFIRM_NEEDED)
+                {
+                    Serial.printf("[✅ KONFIRMASI CAHAYA] %d → %d\n", lastLightCat, currentLightCat);
+                    lastLightCat = currentLightCat;
+                    lightConfirmCount = 0;
+                    isEventConfirmed = true;
+                }
+            }
+            else
+            {
+                pendingLightCat = currentLightCat;
+                lightConfirmCount = 1;
+            }
+        }
+        else
+        {
+            pendingLightCat = lastLightCat;
+            lightConfirmCount = 0;
+        }
+
+        // --- Suhu ---
+        if (currentTempCat != lastTempCat)
+        {
+            if (currentTempCat == pendingTempCat)
+            {
+                tempConfirmCount++;
+                if (tempConfirmCount >= TEMP_CONFIRM_NEEDED)
+                {
+                    Serial.printf("[✅ KONFIRMASI SUHU] %d → %d\n", lastTempCat, currentTempCat);
+                    lastTempCat = currentTempCat;
+                    tempConfirmCount = 0;
+                    isEventConfirmed = true;
+                }
+            }
+            else
+            {
+                pendingTempCat = currentTempCat;
+                tempConfirmCount = 1;
+            }
+        }
+        else
+        {
+            pendingTempCat = lastTempCat;
+            tempConfirmCount = 0;
+        }
+
+        // --- Kebisingan ---
+        if (currentNoiseCat != lastNoiseCat)
+        {
+            if (currentNoiseCat == pendingNoiseCat)
+            {
+                noiseConfirmCount++;
+                if (noiseConfirmCount >= NOISE_CONFIRM_NEEDED)
+                {
+                    Serial.printf("[✅ KONFIRMASI NOISE] %d → %d\n", lastNoiseCat, currentNoiseCat);
+                    lastNoiseCat = currentNoiseCat;
+                    noiseConfirmCount = 0;
+                    isEventConfirmed = true;
+                }
+            }
+            else
+            {
+                pendingNoiseCat = currentNoiseCat;
+                noiseConfirmCount = 1;
+            }
+        }
+        else
+        {
+            pendingNoiseCat = lastNoiseCat;
+            noiseConfirmCount = 0;
+        }
     }
 
     if (!isEventConfirmed)
         return;
 
     // ====================================================================
-    // TRIGGER AI
+    // TRIGGER AI (Selalu kirim payload lengkap, backend yang filter)
     // ====================================================================
     int tempInt = (int)round(currentData.temperature);
     int luxInt = (int)round(currentData.lightLux);
     int noiseInt = (int)round((float)currentData.noiseLevel);
 
-    Serial.printf("[\u26a1 TRIGGER AI] Kirim: Suhu=%d\u00b0C, Cahaya=%d lux, Noise=%d dB | lastCondition='%s'\n",
+    Serial.printf("[⚡ TRIGGER AI] Kirim: Suhu=%d°C, Cahaya=%d lux, Noise=%d dB | lastCondition='%s'\n",
                   tempInt, luxInt, noiseInt, activeConditionFromAI.c_str());
 
     JsonDocument doc;
@@ -279,13 +412,17 @@ void aiSensor_loop()
     serializeJson(doc, jsonString);
     sendRawWS(jsonString);
 
-    // ✨ FIX 6: Pasang Cooldown sementara (5 detik) untuk mencegah spam JSON beruntun
-    // karena delay jaringan, sebelum memori di-update oleh Backend.
+    // ✨ FIX: Pasang Cooldown sementara (5 detik) untuk mencegah spam JSON
+    // Ini hanya anti-spam, bukan cooldown utama (yang diatur oleh updateMemoryWithCooldown)
     lastAiSpokeTime = millis();
     currentCooldownMs = 5000;
 }
 
 String aiSensor_getCurrentCondition()
 {
+    if (!pomodoro_isRunning())
+    {
+        return "";
+    }
     return activeConditionFromAI;
 }

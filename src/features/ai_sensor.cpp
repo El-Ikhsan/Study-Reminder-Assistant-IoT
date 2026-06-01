@@ -141,7 +141,7 @@ void aiSensor_updateMemoryWithCooldown(const String &newCondition, bool isRecove
         lastAiSpokeTime = millis();
         if (DEMO_MODE_SIDANG)
         {
-            currentCooldownMs = 15000; // Demo: 15 detik
+            currentCooldownMs = 5000; // Demo: 15 detik
         }
         else
         {
@@ -412,10 +412,10 @@ void aiSensor_loop()
     serializeJson(doc, jsonString);
     sendRawWS(jsonString);
 
-    // ✨ FIX: Pasang Cooldown sementara (5 detik) untuk mencegah spam JSON
-    // Ini hanya anti-spam, bukan cooldown utama (yang diatur oleh updateMemoryWithCooldown)
+    // ✨ FIX: Anti-spam ringan (1 detik) untuk mencegah duplikat JSON
+    // Cooldown utama diatur oleh updateMemoryWithCooldown setelah AI merespons
     lastAiSpokeTime = millis();
-    currentCooldownMs = 5000;
+    currentCooldownMs = 1000;
 }
 
 String aiSensor_getCurrentCondition()

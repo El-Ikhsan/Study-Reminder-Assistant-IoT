@@ -195,7 +195,7 @@ void loop()
             lastActionTime = currentMillis;
             if (isPingNext)
             {
-                sendPingWS();
+                // sendPingWS();
             }
             else
             {

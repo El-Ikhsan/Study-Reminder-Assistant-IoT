@@ -42,7 +42,7 @@ void initSensors()
 SensorData readAllSensors()
 {
     SensorData data;
-    data.temperature = bmp.readTemperature();
+    data.temperature = bmp.readTemperature() - 5.0f;
     data.lightLux = lightMeter.readLightLevel();
     data.noiseLevel = currentNoiseLevel; // Ambil nilai asli dari kalkulasi Mikrofon INMP441
     return data;

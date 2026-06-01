@@ -51,64 +51,64 @@ void routeIncomingMessage(const String &msg)
         Serial.printf("[AI] Emosi: %s | Teks: %s\n", emotionStr.c_str(), text.c_str());
 
         Emotion aiEmo = parseEmotionString(emotionStr);
-        bool isRecovery = (aiEmo == EMOTION_RECOVERY);
+        bool isSensorResponse = payload.containsKey("newCondition");
+        bool isRecovery = isSensorResponse && (aiEmo == EMOTION_RECOVERY);
 
         forceClearDialog();
-        drawEmoji(aiEmo); // Render emosi interupsi / pemulihan
 
-        // ==========================================================
-        // ✨ LOGIKA UI TOP BAR (DIPERBAIKI)
-        // ==========================================================
-        String newCond = payload.containsKey("newCondition") ? payload["newCondition"].as<String>() : "";
-
-        if (isRecovery)
+        if (isSensorResponse)
         {
-            // PEMULIHAN: Tampilkan label spesifik di Top Bar SELAMA dialog aktif
-            if (newCond != "")
-                globalSensorAlert = newCond;
-            forceUpdateTopBarAlert(globalSensorAlert);
+            // ==========================================================
+            // ✨ RESPONS SENSOR: Render emosi & kelola Top Bar + Lock
+            // ==========================================================
+            drawEmoji(aiEmo);
 
-            // Jeda animasi 2.5s agar user melihat Rinchan lega
-            unsigned long reactionStart = millis();
-            while (millis() - reactionStart < 2500)
+            String newCond = payload["newCondition"].as<String>();
+
+            if (isRecovery)
             {
-                playDisplayAnimation();
-                delay(10);
+                // PEMULIHAN: Tampilkan label di Top Bar SELAMA dialog aktif
+                if (newCond != "")
+                    globalSensorAlert = newCond;
+                forceUpdateTopBarAlert(globalSensorAlert);
+
+                // Jeda animasi 2.5s agar user melihat Rinchan lega
+                unsigned long reactionStart = millis();
+                while (millis() - reactionStart < 2500)
+                {
+                    playDisplayAnimation();
+                    delay(10);
+                }
+            }
+            else
+            {
+                // INTERUPSI: Set alert, tampilkan di Top Bar selama belum dipulihkan
+                if (newCond != "")
+                    globalSensorAlert = newCond;
+                forceUpdateTopBarAlert(globalSensorAlert);
+            }
+
+            // Tampilkan Dialog
+            showDialogWidget(text);
+
+            // Update memori sensor & cooldown
+            aiSensor_updateMemoryWithCooldown(newCond, isRecovery);
+
+            // SETELAH DIALOG: Reset UI jika pemulihan
+            if (isRecovery)
+            {
+                drawEmoji(EMOTION_IDLE);
+                forceUpdateTopBarAlert("");
+                globalSensorAlert = "";
             }
         }
-        else if (aiEmo != EMOTION_IDLE)
+        else
         {
-            // INTERUPSI: Set alert dan tampilkan di Top Bar selama belum dipulihkan
-            if (newCond != "")
-                globalSensorAlert = newCond;
-            forceUpdateTopBarAlert(globalSensorAlert);
-        }
-
-        // ==========================================================
-        // Tampilkan Dialog Box (blocking sampai selesai dibaca)
-        // ==========================================================
-        showDialogWidget(text);
-
-        // ==========================================================
-        // ✨ Update memori sensor DENGAN cooldown yang tepat
-        // ==========================================================
-        if (payload.containsKey("newCondition"))
-        {
-            // isRecovery=true  → activeConditionFromAI = "Kondisi Optimal" (LOCK DILEPAS) + cooldown aktif
-            // isRecovery=false → activeConditionFromAI = newCond (LOCK AKTIF) + cooldown = 0
-            aiSensor_updateMemoryWithCooldown(payload["newCondition"].as<String>(), isRecovery);
-        }
-
-        // ==========================================================
-        // ✨ SETELAH DIALOG SELESAI: Reset UI jika pemulihan
-        // ==========================================================
-        if (isRecovery)
-        {
-            drawEmoji(EMOTION_IDLE);
-
-            // Reset Top Bar & globalSensorAlert → siap interupsi baru
-            forceUpdateTopBarAlert("");
-            globalSensorAlert = "";
+            // ==========================================================
+            // ✨ RESPONS POMODORO: HANYA tampilkan dialog teks
+            // JANGAN render emosi (agar tidak merusak animasi sensor/lock)
+            // ==========================================================
+            showDialogWidget(text);
         }
     }
     // ✨ FIX: 3. KHUSUS UPDATE MEMORI SENSOR (Jika kondisi SAMA / AI Diam)

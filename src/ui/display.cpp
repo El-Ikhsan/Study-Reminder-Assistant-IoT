@@ -71,12 +71,12 @@ void drawTopBar(bool isWifiConnected, bool isMicActive, String timeStr, String a
     }
 
     // 3. Update Ikon Mic (HANYA JIKA STATUS BERUBAH)
-    if (isMicActive != lastMic || firstDrawTopBar)
-    {
-        tft.fillRect(25, 2, 16, 16, TFT_BLACK); // Sapu bersih area ikon saja
-        TJpgDec.drawFsJpg(25, 2, isMicActive ? "/mic_on.jpg" : "/mic_off.jpg", LittleFS);
-        lastMic = isMicActive;
-    }
+    // if (isMicActive != lastMic || firstDrawTopBar)
+    // {
+    //     tft.fillRect(25, 2, 16, 16, TFT_BLACK);
+    //     TJpgDec.drawFsJpg(25, 2, isMicActive ? "/mic_on.jpg" : "/mic_off.jpg", LittleFS);
+    //     lastMic = isMicActive;
+    // }
 
     // 4. Update Jam (HANYA JIKA DETIK/MENIT BERUBAH)
     if (timeStr != lastTimeStr || firstDrawTopBar)

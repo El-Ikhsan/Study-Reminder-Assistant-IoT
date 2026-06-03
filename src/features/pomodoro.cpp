@@ -39,6 +39,11 @@ namespace
 
     PomodoroState state;
 
+    // ✨ FLAG DEFERRED START: Timer belum benar-benar dimulai sampai pomodoroLoop()
+    // mendeteksinya. Ini memastikan ACK ter-flush SEBELUM timer fisik dimulai,
+    // sehingga frontend dan IoT mulai dalam waktu yang hampir bersamaan.
+    bool pendingTimerStart = false;
+
     void sendPhaseReport(const String &mode, float durationMin, float remainingMin);
 
     void startTimerForMode(const String &mode, int durationMin)
@@ -145,7 +150,7 @@ void pomodoro_processCommand(const String &type, JsonObject payload)
 {
     if (type == "CMD_START_POMODORO")
     {
-        Serial.println("\n[▶️] Perintah START diterima dari Dashboard!");
+        Serial.println("\n[\u25b6\ufe0f] Perintah START diterima dari Dashboard!");
 
         state.sessionId = payload["sessionId"].as<String>();
         state.focusDurationMin = payload["focusDuration"] | DEFAULT_FOCUS_DURATION_MIN;
@@ -153,54 +158,85 @@ void pomodoro_processCommand(const String &type, JsonObject payload)
         int restDur = payload["restDuration"];
         int breakDur = payload["breakDuration"];
         if (restDur > 0)
-        {
             state.restDurationMin = restDur;
-        }
         else if (breakDur > 0)
-        {
             state.restDurationMin = breakDur;
-        }
         else
-        {
             state.restDurationMin = DEFAULT_REST_DURATION_MIN;
-        }
 
         state.targetCycles = payload["cycles"] | DEFAULT_TARGET_CYCLES;
         state.media = payload["media"] | "Laptop";
-
-        state.isRunning = true;
         state.currentCycle = 1;
-        state.lastTimerTick = millis();
 
-        aiSensor_forceReset();
+        // ✨ TIDAK langsung jalankan timer di sini.
+        // Set flag agar pomodoroLoop() yang menjalankan setelah ACK ter-flush.
+        pendingTimerStart = true;
+        state.isRunning = false; // Belum running, timer mulai di pomodoroLoop
+
+        // Queue ACK segera (tidak blocking, akan di-flush wsLoop iterasi ini)
+        JsonDocument ackDoc;
+        ackDoc["type"] = "CMD_ACK";
+        ackDoc["payload"]["command"] = "CMD_START_POMODORO";
+        
+        // Ambil waktu persis di device (NTP ms)
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        long long exactTimeMs = (long long)tv.tv_sec * 1000LL + (tv.tv_usec / 1000LL);
+        ackDoc["payload"]["startedAt"] = exactTimeMs;
+
+        String ackMsg;
+        serializeJson(ackDoc, ackMsg);
+        queueSendWS(ackMsg);
 
         forceClearDialog();
-
-        // ✨ FIX: Saat Pomodoro Start, wajah murni kembali ke IDLE
         drawEmoji(EMOTION_IDLE);
-
-        startTimerForMode("fokus", state.focusDurationMin);
+        // RETURN dari callback. wsLoop() akan flush ACK, lalu pomodoroLoop() mulai timer.
     }
     else if (type == "CMD_STOP_POMODORO")
     {
-        Serial.println("\n[⏹️] Perintah STOP diterima! Menghentikan Timer.");
+        Serial.println("\n[\u23f9\ufe0f] Perintah STOP diterima! Menghentikan Timer.");
         state.isRunning = false;
         state.sessionId = "";
+        pendingTimerStart = false; // Batalkan pending start jika ada
+
+        // Queue ACK segera (flush oleh wsLoop)
+        JsonDocument ackDoc;
+        ackDoc["type"] = "CMD_ACK";
+        ackDoc["payload"]["command"] = "CMD_STOP_POMODORO";
+        String ackMsg;
+        serializeJson(ackDoc, ackMsg);
+        queueSendWS(ackMsg);
 
         clearWidget();
         forceClearDialog();
         drawEmoji(EMOTION_IDLE);
 
-        // ✨ FIX: Play cancel SFX BLOCKING dulu agar terdengar
-        // SEBELUM dialog mengambil alih jalur I2S untuk typing
-        playRinchanSoundBlocking(SND_POMO_CANCEL);
-
-        showDialogWidget("Yah, dibatalkan...");
+        // Non-blocking sound agar ACK bisa ter-flush dulu
+        // Dialog di-queue agar wsLoop() tidak terblokir
+        playRinchanSound(SND_POMO_CANCEL);
+        queueDialogWidget("Yah, dibatalkan...");
     }
 }
 
 void pomodoroLoop()
 {
+    // ✨ DEFERRED START: Jalankan timer SETELAH ACK ter-flush oleh wsLoop()
+    // Ini dipanggil di iterasi loop() berikutnya setelah CMD_START_POMODORO
+    if (pendingTimerStart)
+    {
+        pendingTimerStart = false;
+        aiSensor_forceReset();
+
+        // Mulai timer — lastTimerTick di-set SEKARANG, setelah ACK sudah dikirim
+        state.isRunning = true;
+        state.currentCycle = 1;
+        state.lastTimerTick = millis();
+
+        Serial.println("[⏱️] Timer dimulai (setelah ACK ter-flush ke backend)");
+        startTimerForMode("fokus", state.focusDurationMin);
+        return; // startTimerForMode sudah setup state, loop berikutnya akan jalan normal
+    }
+
     if (!state.isRunning)
         return;
 

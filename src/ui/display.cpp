@@ -421,6 +421,29 @@ void showDialogWidget(String text)
 }
 
 // ==========================================
+// ✨ NON-BLOCKING DIALOG QUEUE
+// Simpan pesan, eksekusi dari main loop agar wsLoop() tidak terblokir
+// ==========================================
+namespace {
+    String pendingDialogText = "";
+    bool hasPendingDialog = false;
+}
+
+void queueDialogWidget(String text) {
+    // Simpan pesan ke queue (timpa jika ada yang pending)
+    pendingDialogText = text;
+    hasPendingDialog = true;
+}
+
+void processDialogQueue() {
+    if (!hasPendingDialog) return;
+    hasPendingDialog = false;
+    String textCopy = pendingDialogText;
+    pendingDialogText = "";
+    showDialogWidget(textCopy);
+}
+
+// ==========================================
 // 3. AREA BAWAH: TIMER POMODORO LENGKAP
 // ==========================================
 void clearWidget()

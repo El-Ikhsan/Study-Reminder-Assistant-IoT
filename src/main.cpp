@@ -138,6 +138,9 @@ void loop()
         pomodoroLoop();
         aiSensor_loop();
 
+        // ✨ EKSEKUSI DIALOG YANG DIANTREKAN (setelah wsLoop berjalan agar ACK ter-flush duluan)
+        processDialogQueue();
+
         // ✨ MOTOR ANIMASI GIF UTAMA
         playDisplayAnimation();
 

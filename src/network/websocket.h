@@ -12,4 +12,8 @@ extern bool wsConnected;
 void sendRawWS(const String &msg);
 void sendAudioChunkWS(const uint8_t *payload, size_t length);
 
+// ✨ AMAN dipanggil dari dalam WebSocket callback (tidak acquire mutex)
+// Pesan akan di-flush oleh wsLoop() setelah webSocket.loop() selesai
+void queueSendWS(const String &msg);
+
 #endif

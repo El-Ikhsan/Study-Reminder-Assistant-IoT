@@ -18,6 +18,11 @@ namespace
     WebSocketsClient webSocket;
     unsigned int wsFailCount = 0;
     SemaphoreHandle_t wsMutex = NULL;
+
+    // ✨ OUTGOING QUEUE: Pesan yang akan dikirim setelah webSocket.loop() selesai
+    // Digunakan agar callback tidak perlu acquire mutex (mencegah deadlock)
+    String pendingSendMsg = "";
+    bool hasPendingSend = false;
 }
 
 bool wsConnected = false;
@@ -127,8 +132,18 @@ void routeIncomingMessage(const String &msg)
         Serial.printf("\n[💡] Perintah ubah Brightness menjadi: %d%%\n", newBrightness);
         updateBrightness(newBrightness);
 
+        // ✨ 1: Queue ACK (aman dari dalam callback, tidak deadlock mutex)
+        JsonDocument ackDoc;
+        ackDoc["type"] = "CMD_ACK";
+        ackDoc["payload"]["command"] = "CMD_SET_BRIGHTNESS";
+        String ackMsg;
+        serializeJson(ackDoc, ackMsg);
+        queueSendWS(ackMsg); // ← queueSendWS, bukan sendRawWS!
+
+        // ✨ 2: Queue dialog agar wsLoop() tidak terblokir
         forceClearDialog();
-        showDialogWidget("Kecerahan: " + String(newBrightness) + "%");
+        drawEmoji(EMOTION_IDLE);
+        queueDialogWidget("Kecerahan: " + String(newBrightness) + "%");
     }
 
     // 5. KIRIM KE DEPARTEMEN HARDWARE (VOLUME)
@@ -138,13 +153,19 @@ void routeIncomingMessage(const String &msg)
         Serial.printf("\n[🔊] Perintah ubah Volume menjadi: %d%%\n", newVolume);
         updateVolume(newVolume);
 
+        // ✨ 1: Queue ACK (aman dari dalam callback, tidak deadlock mutex)
+        JsonDocument ackDoc;
+        ackDoc["type"] = "CMD_ACK";
+        ackDoc["payload"]["command"] = "CMD_SET_VOLUME";
+        String ackMsg;
+        serializeJson(ackDoc, ackMsg);
+        queueSendWS(ackMsg); // ← queueSendWS, bukan sendRawWS!
+
+        // ✨ 2: Queue dialog agar wsLoop() tidak terblokir
         forceClearDialog();
+        drawEmoji(EMOTION_IDLE);
         playRinchanSound(SND_AI_NOTIFY);
-        showDialogWidget("Volume Audio: " + String(newVolume) + "%");
-    }
-    else
-    {
-        Serial.printf("[WS] Tipe perintah tidak dikenal: %s\n", type.c_str());
+        queueDialogWidget("Volume Audio: " + String(newVolume) + "%");
     }
 }
 
@@ -233,8 +254,27 @@ void wsLoop()
     if (wsMutex != NULL && xSemaphoreTake(wsMutex, 0) == pdTRUE)
     {
         webSocket.loop();
+
+        // ✨ Flush outgoing queue (dikirim dari dalam callback tanpa mutex)
+        // Ini AMAN karena kita masih memegang mutex dan loop() sudah selesai
+        if (hasPendingSend)
+        {
+            webSocket.sendTXT(pendingSendMsg.c_str());
+            hasPendingSend = false;
+            pendingSendMsg = "";
+        }
+
         xSemaphoreGive(wsMutex); // Lepas gembok
     }
+}
+
+// ✨ Kirim pesan dari dalam WebSocket callback (TANPA acquire mutex)
+// Pesan disimpan ke queue, di-flush oleh wsLoop() di iterasi yang sama
+void queueSendWS(const String &msg)
+{
+    if (!wsConnected) return;
+    pendingSendMsg = msg;
+    hasPendingSend = true;
 }
 
 void sendPingWS()

@@ -35,3 +35,8 @@ void updatePomodoroWidget(int min, int sec, bool isBreak, int cycle, String medi
 void clearWidget();
 void forceUpdateTopBarAlert(String alertText);
 void forceClearDialog();
+
+// ✨ NON-BLOCKING DIALOG QUEUE:
+// Antre pesan dialog agar ditampilkan dari main loop (tidak blocking wsLoop)
+void queueDialogWidget(String text);
+void processDialogQueue();

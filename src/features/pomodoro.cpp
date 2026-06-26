@@ -78,22 +78,16 @@ namespace
         if (state.mode == "fokus")
         {
             Serial.println("[✅] Sesi Fokus Selesai!");
-            startTimerForMode("istirahat", state.restDurationMin);
-        }
-        else if (state.mode == "istirahat")
-        {
-            Serial.println("[✅] Sesi Istirahat Selesai!");
-            state.currentCycle++;
 
-            if (state.currentCycle > state.targetCycles)
+            // ✨ LOGIKA BARU: Cek apakah ini siklus fokus TERAKHIR
+            // Jika iya, LANGSUNG selesaikan sesi tanpa fase istirahat
+            if (state.currentCycle >= state.targetCycles)
             {
-                Serial.println("[🎉] SEMUA SIKLUS POMODORO SELESAI!");
+                Serial.println("[🎉] SEMUA SIKLUS POMODORO SELESAI! (Tanpa istirahat akhir)");
                 state.isRunning = false;
                 globalSensorAlert = "";
 
-                // ✨ FIX: Alarm berulang BLOCKING dulu (user dengar alarm 3x)
-                // Baru setelah alarm selesai, kirim ke backend
-                playRinchanAlarm(3);
+                playRinchanAlarm(1);
 
                 clearWidget();
                 forceClearDialog();
@@ -103,7 +97,6 @@ namespace
                 {
                     JsonDocument doc;
                     doc["type"] = "SESSION_COMPLETED";
-
                     doc["payload"]["sessionId"] = state.sessionId;
                     doc["payload"]["currentCycle"] = state.targetCycles;
                     doc["payload"]["media"] = state.media;
@@ -117,8 +110,18 @@ namespace
             }
             else
             {
-                startTimerForMode("fokus", state.focusDurationMin);
+                // Masih ada siklus berikutnya, masuk ke fase istirahat
+                startTimerForMode("istirahat", state.restDurationMin);
             }
+        }
+        else if (state.mode == "istirahat")
+        {
+            Serial.println("[✅] Sesi Istirahat Selesai!");
+            state.currentCycle++;
+
+            // Setelah istirahat, SELALU mulai fokus berikutnya
+            // (karena istirahat terakhir sudah tidak ada — langsung selesai dari fokus)
+            startTimerForMode("fokus", state.focusDurationMin);
         }
     }
 

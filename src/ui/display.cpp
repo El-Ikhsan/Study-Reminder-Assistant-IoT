@@ -26,8 +26,8 @@ Emotion parseEmotionString(String emoStr)
         return EMOTION_NOISY;
     if (emoStr == "LISTENING")
         return EMOTION_LISTENING;
-    if (emoStr == "RECOVERY")
-        return EMOTION_RECOVERY; // Backend kirim "RECOVERY"
+    if (emoStr == "SMILE" || emoStr == "RECOVERY")
+        return EMOTION_SMILE; // Backend kirim "SMILE" (pemulihan sensor membaik)
     return EMOTION_IDLE;
 }
 
@@ -270,7 +270,7 @@ void drawEmoji(Emotion emoji)
     case EMOTION_LISTENING:
         filePath = "/mendengar.gif";
         break;
-    case EMOTION_RECOVERY:
+    case EMOTION_SMILE:
         filePath = "/pemulihan.gif";
         break;
     case EMOTION_IDLE:
@@ -454,7 +454,7 @@ void clearWidget()
 
     // Pancing ulang drawEmoji agar GIF dipanggil kembali dari awal (Frame 1)
     Emotion temp = currentEmoji;
-    currentEmoji = EMOTION_IDLE;
+    currentEmoji = EMOTION_IDLE; // Reset agar drawEmoji mau reload GIF
     drawEmoji(temp);
 }
 

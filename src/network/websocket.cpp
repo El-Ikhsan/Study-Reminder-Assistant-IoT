@@ -57,7 +57,7 @@ void routeIncomingMessage(const String &msg)
 
         Emotion aiEmo = parseEmotionString(emotionStr);
         bool isSensorResponse = payload.containsKey("newCondition");
-        bool isRecovery = isSensorResponse && (aiEmo == EMOTION_RECOVERY);
+        bool isRecovery = isSensorResponse && (aiEmo == EMOTION_SMILE);
 
         forceClearDialog();
 

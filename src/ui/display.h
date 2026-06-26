@@ -10,7 +10,7 @@ enum Emotion
     EMOTION_GLARE,     // silau
     EMOTION_NOISY,     // bising
     EMOTION_LISTENING, // mendengar (Wakenet aktif)
-    EMOTION_RECOVERY,  // pemulihan
+    EMOTION_SMILE,     // pemulihan / sensor membaik
     EMOTION_IDLE       // idle / standby
 };
 Emotion parseEmotionString(String emoStr);

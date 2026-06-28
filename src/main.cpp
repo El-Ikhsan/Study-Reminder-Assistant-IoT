@@ -59,6 +59,7 @@ void setup()
     Serial.println("\n=== RINCHAN IOT: COLD BOOT ===");
 
     // 1. PRE-BOOT
+    initButton();
     initDisplay();
     setDisplayBrightness(0);
 
@@ -129,6 +130,7 @@ void setup()
 
 void loop()
 {
+    handleButtonLoop();
     handleWiFiLoop();
 
     if (isRuntimeReady())

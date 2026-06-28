@@ -18,6 +18,10 @@ namespace
     unsigned long lastFastCheckTime = 0;
     const int FAST_CHECK_INTERVAL = 1000; // Cek tiap 1 detik
 
+    // Flag: sensor diblokir sampai backend merespons fase awal pomodoro
+    bool waitingForAwalResponse = false;
+    unsigned long awalWaitStartTime = 0; // Kapan mulai menunggu (untuk timeout)
+
     int lastTempCat = 3;
     int lastNoiseCat = 3;
     int lastLightCat = 2;
@@ -39,13 +43,11 @@ namespace
     // ✨ UPDATE Sesuai CSV Final
     int getTempCategory(float temp)
     {
-        if (temp >= 31.0f)
-            return 1; // Panas
-        if (temp >= 28.0f)
-            return 2; // Hangat
-        if (temp >= 22.0f)
-            return 3; // Sejuk (Optimal)
-        return 4;     // Dingin
+        if (temp >= 31.0f) return 1; // Panas (buruk)
+        if (temp >= 28.0f) return 2; // Hangat
+        if (temp >= 22.0f) return 3; // Sejuk (Optimal)
+        if (temp >= 16.0f) return 4; // Dingin
+        return 5;                    // Dingin Ekstrem (buruk)
     }
 
     int getNoiseCategory(float noise)
@@ -103,35 +105,40 @@ void aiSensor_forceReset()
     // ✨ FIX 3: Reset masa tenang setiap mulai Pomodoro baru
     lastAiSpokeTime = 0;
     currentCooldownMs = 0;
-    Serial.println("[🧠] Memori & Cooldown AI Sensor di-reset untuk sesi baru!");
+    waitingForAwalResponse = true;
+    awalWaitStartTime = millis();
+    Serial.println("[AI] Memori & Cooldown di-reset. Sensor menunggu respons fase awal.");
 }
+
 
 // ✨ UPDATE: Fungsi lama tetap ada untuk kompatibilitas
 void aiSensor_updateMemory(const String &newCondition)
 {
+    // Selalu clear flag meski newCondition null/kosong (fase awal mungkin tidak kirim kondisi)
+    waitingForAwalResponse = false;
     if (newCondition != "null" && newCondition != "")
     {
         activeConditionFromAI = newCondition;
-        Serial.println("\n[🧠 MEMORI AI] Diperbarui menjadi: " + activeConditionFromAI);
+        Serial.println("\n[AI MEMORI] Diperbarui menjadi: " + activeConditionFromAI);
     }
 }
 
 // ✨ NEW: Fungsi baru yang membedakan cooldown interupsi vs pemulihan
 void aiSensor_updateMemoryWithCooldown(const String &newCondition, bool isRecovery)
 {
+    // Selalu clear flag meski newCondition null/kosong
+    waitingForAwalResponse = false;
     if (newCondition != "null" && newCondition != "")
     {
-        // ✨ KUNCI: Saat pemulihan, SELALU set ke "Kondisi Optimal" agar lock dilepas
-        // Label spesifik (misal "Suhu Sejuk") ditampilkan di top bar oleh websocket.cpp
         if (isRecovery)
         {
             activeConditionFromAI = "Kondisi Optimal";
-            Serial.println("\n[🧠 MEMORI AI] PEMULIHAN → Lock dilepas, kembali ke: Kondisi Optimal");
+            Serial.println("\n[AI MEMORI] PEMULIHAN, lock dilepas.");
         }
         else
         {
             activeConditionFromAI = newCondition;
-            Serial.println("\n[🧠 MEMORI AI] INTERUPSI → Lock aktif pada: " + activeConditionFromAI);
+            Serial.println("\n[AI MEMORI] INTERUPSI, lock aktif: " + activeConditionFromAI);
         }
     }
 
@@ -141,7 +148,7 @@ void aiSensor_updateMemoryWithCooldown(const String &newCondition, bool isRecove
         lastAiSpokeTime = millis();
         if (DEMO_MODE_SIDANG)
         {
-            currentCooldownMs = 5000; // Demo: 15 detik
+            currentCooldownMs = 5000; // Demo: 5 detik
         }
         else
         {
@@ -171,8 +178,17 @@ void aiSensor_loop()
 
     unsigned long currentMillis = millis();
 
-    // ✨ FIX: Cooldown HANYA berlaku setelah pemulihan (bukan interupsi)
-    // Setelah interupsi, currentCooldownMs = 0 jadi blok ini di-skip
+    // Tunggu sampai backend merespons fase awal pomodoro
+    // Fallback: setelah 60 detik, aktifkan sensor meski belum ada respons backend
+    if (waitingForAwalResponse)
+    {
+        if (currentMillis - awalWaitStartTime < 60000)
+            return;
+        waitingForAwalResponse = false;
+        Serial.println("[SENSOR] Timeout 60s, sensor diaktifkan paksa.");
+    }
+
+    // Cooldown setelah pemulihan
     if (currentCooldownMs > 0 && (currentMillis - lastAiSpokeTime < currentCooldownMs))
     {
         return;
@@ -220,7 +236,7 @@ void aiSensor_loop()
                     lightConfirmCount++;
                     if (lightConfirmCount >= LIGHT_CONFIRM_NEEDED)
                     {
-                        Serial.printf("[✅ KONFIRMASI CAHAYA] %d → %d\n", lastLightCat, currentLightCat);
+                        Serial.printf("[KONFIRMASI CAHAYA] cat %d -> %d\n", lastLightCat, currentLightCat);
                         lastLightCat = currentLightCat;
                         lightConfirmCount = 0;
                         isEventConfirmed = true;

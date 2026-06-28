@@ -31,7 +31,7 @@ void drawTopBar(bool isWifiConnected, bool isMicActive, String timeStr, String a
 void playDisplayAnimation();
 void drawEmoji(Emotion emoji);
 void showDialogWidget(String text);
-void updatePomodoroWidget(int min, int sec, bool isBreak, int cycle, String media);
+void updatePomodoroWidget(int min, int sec, bool isBreak, int cycle, int totalCycles, String media);
 void clearWidget();
 void forceUpdateTopBarAlert(String alertText);
 void forceClearDialog();

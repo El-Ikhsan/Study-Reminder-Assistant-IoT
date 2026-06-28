@@ -113,7 +113,11 @@ void routeIncomingMessage(const String &msg)
             // ✨ RESPONS POMODORO: HANYA tampilkan dialog teks
             // JANGAN render emosi (agar tidak merusak animasi sensor/lock)
             // ==========================================================
-            showDialogWidget(text);
+            showDialogWidget(text); // Blocking — selesai = teks sudah ter-render
+
+            // Setelah dialog fase awal selesai, aktifkan sensor interupsi
+            // (aiSensor_updateMemory selalu clear waitingForAwalResponse)
+            aiSensor_updateMemory("");
         }
     }
     // ✨ FIX: 3. KHUSUS UPDATE MEMORI SENSOR (Jika kondisi SAMA / AI Diam)

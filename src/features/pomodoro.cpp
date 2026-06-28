@@ -44,6 +44,12 @@ namespace
     // sehingga frontend dan IoT mulai dalam waktu yang hampir bersamaan.
     bool pendingTimerStart = false;
 
+    // ✨ FIX BARU: Delay sebelum PHASE_REPORT awal dikirim
+    // Memberi waktu backend untuk siap menerima dan mengirim teks LLM
+    // Tanpa ini, respon "offline" muncul karena koneksi WS belum stabil
+    const unsigned long AWAL_PHASE_DELAY_MS = 2000; // 2 detik (dihitung setelah SFX selesai)
+    unsigned long awalPhaseReadyAt = 0;             // Waktu kapan boleh kirim PHASE_REPORT awal
+
     void sendPhaseReport(const String &mode, float durationMin, float remainingMin);
 
     void startTimerForMode(const String &mode, int durationMin)
@@ -180,7 +186,7 @@ void pomodoro_processCommand(const String &type, JsonObject payload)
         JsonDocument ackDoc;
         ackDoc["type"] = "CMD_ACK";
         ackDoc["payload"]["command"] = "CMD_START_POMODORO";
-        
+
         // Ambil waktu persis di device (NTP ms)
         struct timeval tv;
         gettimeofday(&tv, NULL);
@@ -228,31 +234,42 @@ void pomodoroLoop()
     if (pendingTimerStart)
     {
         pendingTimerStart = false;
-        aiSensor_forceReset();
+        aiSensor_forceReset(); // Set waitingForAwalResponse = true di sini
 
-        // Mulai timer — lastTimerTick di-set SEKARANG, setelah ACK sudah dikirim
         state.isRunning = true;
         state.currentCycle = 1;
         state.lastTimerTick = millis();
 
-        Serial.println("[⏱️] Timer dimulai (setelah ACK ter-flush ke backend)");
         startTimerForMode("fokus", state.focusDurationMin);
-        return; // startTimerForMode sudah setup state, loop berikutnya akan jalan normal
+
+        awalPhaseReadyAt = millis() + AWAL_PHASE_DELAY_MS;
+        Serial.printf("[TIMER] Dimulai. PHASE_REPORT awal dikirim dalam %lu ms...\n", AWAL_PHASE_DELAY_MS);
+
+        return; // loop berikutnya akan jalan normal
     }
 
     if (!state.isRunning)
         return;
 
-    // ✨ FIX 2: TRIGGER FASE AWAL SECARA INSTAN! (Ditaruh di luar timer 1 detik)
-    // AI akan diberitahu detik itu juga tanpa menyebabkan tumpukan memori di WS.
+    // ✨ FIX 2: TRIGGER FASE AWAL — DITUNDA SAMPAI BACKEND SIAP
+    // Tanpa delay ini, respon langsung "offline" karena koneksi WS belum stabil
     if (!state.reportedAwal)
     {
-        float durationMinFloat = state.durationTotalSec / 60.0;
-        float remainingMinFloat = state.timeRemainingSec / 60.0;
+        // Tunggu sampai delay AWAL_PHASE_DELAY_MS habis
+        if (millis() < awalPhaseReadyAt)
+        {
+            // Belum saatnya, skip dulu
+        }
+        else
+        {
+            float durationMinFloat = state.durationTotalSec / 60.0;
+            float remainingMinFloat = state.timeRemainingSec / 60.0;
 
-        state.phase = "awal";
-        sendPhaseReport(state.mode, durationMinFloat, remainingMinFloat);
-        state.reportedAwal = true;
+            state.phase = "awal";
+            sendPhaseReport(state.mode, durationMinFloat, remainingMinFloat);
+            state.reportedAwal = true;
+            Serial.println("[FASE AWAL] PHASE_REPORT terkirim. Sensor aktif setelah AI merespons.");
+        }
     }
 
     unsigned long currentMillis = millis();
@@ -276,7 +293,7 @@ void pomodoroLoop()
 
             int minRemaining = state.timeRemainingSec / 60;
             int secRemaining = state.timeRemainingSec % 60;
-            updatePomodoroWidget(minRemaining, secRemaining, (state.mode == "istirahat"), state.currentCycle, state.media);
+            updatePomodoroWidget(minRemaining, secRemaining, (state.mode == "istirahat"), state.currentCycle, state.targetCycles, state.media);
 
             float ratio = (float)state.timeRemainingSec / (float)state.durationTotalSec;
             float durationMinFloat = state.durationTotalSec / 60.0;

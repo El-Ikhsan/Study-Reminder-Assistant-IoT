@@ -458,8 +458,8 @@ void clearWidget()
     drawEmoji(temp);
 }
 
-// ✨ UPDATE: Tambahan parameter cycle dan media belajar
-void updatePomodoroWidget(int min, int sec, bool isBreak, int cycle, String media)
+// ✨ UPDATE: Tambahan parameter cycle, totalCycles, dan media belajar
+void updatePomodoroWidget(int min, int sec, bool isBreak, int cycle, int totalCycles, String media)
 {
     if (currentWidget == WIDGET_DIALOG)
         return;
@@ -469,6 +469,7 @@ void updatePomodoroWidget(int min, int sec, bool isBreak, int cycle, String medi
     // ==========================================
     static bool lastIsBreak = false;
     static int lastCycle = -1;
+    static int lastTotalCycles = -1;
     static String lastMedia = "";
     static int lastMin = -1;
     static int lastSec = -1;
@@ -489,7 +490,7 @@ void updatePomodoroWidget(int min, int sec, bool isBreak, int cycle, String medi
     // A. AREA KIRI: INFO DETAIL
     // Update HANYA jika fase, siklus, media berubah, atau baru pertama muncul!
     // ==========================================
-    if (isBreak != lastIsBreak || cycle != lastCycle || media != lastMedia || firstDrawPomo)
+    if (isBreak != lastIsBreak || cycle != lastCycle || totalCycles != lastTotalCycles || media != lastMedia || firstDrawPomo)
     {
         tft.fillRect(5, 178, 175, 60, tft.color565(15, 15, 15)); // Sapu area kiri
 
@@ -509,7 +510,7 @@ void updatePomodoroWidget(int min, int sec, bool isBreak, int cycle, String medi
         // 2. Teks Siklus & Media Belajar
         tft.setTextSize(1);
         tft.setTextColor(TFT_WHITE);
-        tft.drawString("Siklus: " + String(cycle) + "/4", 10, 205);
+        tft.drawString("Siklus: " + String(cycle) + "/" + String(totalCycles), 10, 205);
 
         String displayMedia = media;
         if (displayMedia.length() > 15)
@@ -519,6 +520,7 @@ void updatePomodoroWidget(int min, int sec, bool isBreak, int cycle, String medi
         // Simpan ke ingatan
         lastIsBreak = isBreak;
         lastCycle = cycle;
+        lastTotalCycles = totalCycles;
         lastMedia = media;
     }
 

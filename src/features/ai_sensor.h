@@ -9,3 +9,6 @@ void aiSensor_updateMemory(const String &newCondition);
 void aiSensor_updateMemoryWithCooldown(const String &newCondition, bool isRecovery);
 void aiSensor_forceReset();
 String aiSensor_getCurrentCondition();
+
+// ✨ Fungsi untuk mematikan/menyalakan sensor secara spesifik (Kebutuhan Demo Sidang)
+void aiSensor_setToggle(const String &sensorType, bool enabled);

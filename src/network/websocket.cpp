@@ -171,6 +171,22 @@ void routeIncomingMessage(const String &msg)
         playRinchanSound(SND_AI_NOTIFY);
         queueDialogWidget("Volume Audio: " + String(newVolume) + "%");
     }
+
+    // 6. KIRIM KE DEPARTEMEN SENSOR (TOGGLE)
+    else if (type == "CMD_TOGGLE_SENSOR")
+    {
+        String sensor = payload["sensor"].as<String>();
+        bool enabled = payload["enabled"].as<bool>();
+        aiSensor_setToggle(sensor, enabled);
+
+        // Queue ACK
+        JsonDocument ackDoc;
+        ackDoc["type"] = "CMD_ACK";
+        ackDoc["payload"]["command"] = "CMD_TOGGLE_SENSOR";
+        String ackMsg;
+        serializeJson(ackDoc, ackMsg);
+        queueSendWS(ackMsg);
+    }
 }
 
 void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)

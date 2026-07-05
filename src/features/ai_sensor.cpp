@@ -40,6 +40,11 @@ namespace
 
     String activeConditionFromAI = "Kondisi Optimal";
 
+    // ✨ Status aktif/nonaktif sensor (Kebutuhan Demo Sidang)
+    bool isTempEnabled = true;
+    bool isLightEnabled = true;
+    bool isNoiseEnabled = true;
+
     // ✨ UPDATE Sesuai CSV Final
     int getTempCategory(float temp)
     {
@@ -199,6 +204,11 @@ void aiSensor_loop()
     lastFastCheckTime = currentMillis;
 
     SensorData currentData = readAllSensors();
+
+    // ✨ Mute sensor (Demo Sidang): Spoof data ke nilai optimal jika sensor dimatikan
+    if (!isTempEnabled) currentData.temperature = 25.0f; // 25°C = Sejuk (Optimal)
+    if (!isLightEnabled) currentData.lightLux = 250.0f;  // 250 lux = Terang (Optimal)
+    if (!isNoiseEnabled) currentData.noiseLevel = 55.0f; // 55 dB = Normal (Optimal)
 
     if (isnan(currentData.temperature) || currentData.temperature <= 0.0)
         return;
@@ -441,4 +451,18 @@ String aiSensor_getCurrentCondition()
         return "";
     }
     return activeConditionFromAI;
+}
+
+void aiSensor_setToggle(const String &sensorType, bool enabled)
+{
+    if (sensorType == "temperature") {
+        isTempEnabled = enabled;
+        Serial.printf("[SENSOR TOGGLE] Suhu: %s\n", enabled ? "ON" : "OFF");
+    } else if (sensorType == "light") {
+        isLightEnabled = enabled;
+        Serial.printf("[SENSOR TOGGLE] Cahaya: %s\n", enabled ? "ON" : "OFF");
+    } else if (sensorType == "noise") {
+        isNoiseEnabled = enabled;
+        Serial.printf("[SENSOR TOGGLE] Suara: %s\n", enabled ? "ON" : "OFF");
+    }
 }

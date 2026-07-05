@@ -31,12 +31,18 @@ void drawTopBar(bool isWifiConnected, bool isMicActive, String timeStr, String a
 void playDisplayAnimation();
 void drawEmoji(Emotion emoji);
 void showDialogWidget(String text);
+void showPersistentDialog(String text); // ✨ Teks tetap di layar, tidak auto-clear
 void updatePomodoroWidget(int min, int sec, bool isBreak, int cycle, int totalCycles, String media);
 void clearWidget();
 void forceUpdateTopBarAlert(String alertText);
 void forceClearDialog();
 
-// ✨ NON-BLOCKING DIALOG QUEUE:
+// ✨ COUNTDOWN WIDGET (untuk proses konek WiFi):
+// - showCountdownWidget : render teks statis SEKALI (tanpa animasi ketik)
+// - updateCountdownSeconds: hanya update angka detik, dipanggil tiap detik
+void showCountdownWidget(String line1, String line2);
+void updateCountdownSeconds(int seconds);
+
 // Antre pesan dialog agar ditampilkan dari main loop (tidak blocking wsLoop)
 void queueDialogWidget(String text);
 void processDialogQueue();

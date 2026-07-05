@@ -207,11 +207,11 @@ void showBootingScreen()
     tft.fillScreen(TFT_BLACK);
 
     // Cek apakah file gambar tersedia
-    const char *bootImg = "/rinchan-tft.jpg";
+    const char *bootImg = "/rinchan-booting.jpg";
     if (LittleFS.exists(bootImg))
     {
         // ✨ GAMBAR ADA: Ubah ke Portrait (Berdiri) KHUSUS untuk render ini
-        tft.setRotation(0);
+        tft.setRotation(1); // 0 ke rinchan potrait
 
         TJpgDec.setSwapBytes(true);
         TJpgDec.drawFsJpg(0, 0, bootImg, LittleFS);
@@ -424,19 +424,23 @@ void showDialogWidget(String text)
 // ✨ NON-BLOCKING DIALOG QUEUE
 // Simpan pesan, eksekusi dari main loop agar wsLoop() tidak terblokir
 // ==========================================
-namespace {
+namespace
+{
     String pendingDialogText = "";
     bool hasPendingDialog = false;
 }
 
-void queueDialogWidget(String text) {
+void queueDialogWidget(String text)
+{
     // Simpan pesan ke queue (timpa jika ada yang pending)
     pendingDialogText = text;
     hasPendingDialog = true;
 }
 
-void processDialogQueue() {
-    if (!hasPendingDialog) return;
+void processDialogQueue()
+{
+    if (!hasPendingDialog)
+        return;
     hasPendingDialog = false;
     String textCopy = pendingDialogText;
     pendingDialogText = "";
@@ -552,4 +556,107 @@ void updatePomodoroWidget(int min, int sec, bool isBreak, int cycle, int totalCy
     }
 
     firstDrawPomo = false; // Kunci render dasar
+}
+
+void showCountdownWidget(String line1, String line2)
+{
+    currentWidget = WIDGET_DIALOG;
+
+    // Gambar kotak dialog persis seperti fungsi showDialogWidget biasa
+    dialogSprite.createSprite(320, 220);
+    dialogSprite.fillSprite(TFT_BLACK);
+    dialogSprite.fillRoundRect(5, 5, 310, 210, 5, tft.color565(20, 20, 30));
+    dialogSprite.drawRoundRect(5, 5, 310, 210, 5, TFT_CYAN);
+
+    dialogSprite.setTextColor(TFT_WHITE);
+    dialogSprite.setTextSize(2);
+
+    // Tulis teksnya rata kiri (bukan di tengah lagi)
+    dialogSprite.setCursor(15, 15);
+    dialogSprite.print(line1);
+
+    dialogSprite.setCursor(15, 45); // Turun ke baris kedua
+    dialogSprite.print(line2);
+
+    // Tembak ke layar (di bawah Top Bar Y=20)
+    dialogSprite.pushSprite(0, 20);
+    dialogSprite.deleteSprite();
+}
+
+void updateCountdownSeconds(int seconds)
+{
+    // Timpa teks angka saja di baris ketiga (rata kiri)
+    tft.setTextColor(TFT_YELLOW, tft.color565(20, 20, 30));
+    tft.setTextSize(2);
+    tft.setTextPadding(150); // Bantalan lebar agar angka sebelumnya terhapus sempurna
+
+    // Posisi Y = 20 (TopBar) + 75 (Baris 3) = 95
+    tft.drawString("Sisa waktu: " + String(seconds) + "s", 15, 95);
+    tft.setTextPadding(0); // Kembalikan padding ke normal
+}
+
+void showPersistentDialog(String text)
+{
+    stopAudio();
+    i2s_zero_dma_buffer((i2s_port_t)I2S_NUM_0);
+    delay(10);
+
+    cancelCurrentDialog = false;
+    currentWidget = WIDGET_DIALOG;
+
+    dialogSprite.createSprite(320, 220);
+    dialogSprite.fillSprite(TFT_BLACK);
+    dialogSprite.fillRoundRect(5, 5, 310, 210, 5, tft.color565(20, 20, 30));
+    dialogSprite.drawRoundRect(5, 5, 310, 210, 5, TFT_CYAN);
+    dialogSprite.setTextColor(TFT_WHITE);
+    dialogSprite.setTextSize(2);
+
+    int cX = 15, cY = 15;
+    dialogSprite.setCursor(cX, cY);
+
+    int charCount = 0;
+    for (int i = 0; i < text.length(); i++)
+    {
+        if (cancelCurrentDialog)
+            break;
+
+        if (text[i] != ' ' && (i == 0 || text[i - 1] == ' '))
+        {
+            int wordWidth = 0;
+            for (int j = i; j < text.length() && text[j] != ' '; j++)
+                wordWidth += 12;
+
+            if (cX + wordWidth > 300)
+            {
+                cX = 15;
+                cY += 24;
+                if (cY > 190)
+                {
+                    dialogSprite.fillSprite(TFT_BLACK);
+                    dialogSprite.fillRoundRect(5, 5, 310, 210, 5, tft.color565(20, 20, 30));
+                    dialogSprite.drawRoundRect(5, 5, 310, 210, 5, TFT_CYAN);
+                    dialogSprite.setTextColor(TFT_WHITE);
+                    cX = 15;
+                    cY = 15;
+                }
+                dialogSprite.setCursor(cX, cY);
+            }
+        }
+
+        if (text[i] == ' ' && cX == 15)
+            continue;
+
+        dialogSprite.print(text[i]);
+        cX += 12;
+        charCount++;
+        dialogSprite.pushSprite(0, 20);
+
+        bool makeSound = (text[i] != ' ' && charCount % 2 == 1);
+        playTypingSync(makeSound);
+    }
+
+    playTypingSync(false);
+    i2s_zero_dma_buffer((i2s_port_t)I2S_NUM_0);
+
+    dialogSprite.deleteSprite();
 }

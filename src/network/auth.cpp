@@ -4,6 +4,8 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <WiFiClientSecure.h>
+#include "ui/display.h"
+#include "core/button_manager.h"
 
 namespace
 {
@@ -27,7 +29,7 @@ namespace
             String tail = mac.substring(mac.length() - 4);
 
             // Jahit menjadi format industrial
-            cachedDeviceId = "RC-v1-" + tail;
+            cachedDeviceId = String(RinchanConfig::Hardware::DEVICE_PREFIX) + tail;
 
             Serial.println("[SYSTEM] Device ID Generate: " + cachedDeviceId);
         }
@@ -69,12 +71,17 @@ void initAuth()
 
     if (!apiKey.isEmpty())
     {
-        Serial.println("[AUTH] Token ditemukan! Alat sudah di-claim.");
+        Serial.println("[AUTH] Token ditemukan! Memeriksa versi token di server...");
         authPrefs.end();
-        return; // Langsung keluar fungsi, siap lanjut ke WebSocket
+        refreshToken(); // ✨ Panggil fungsi pengecekan ke backend untuk sinkronisasi versi token
+        return;         // Langsung keluar fungsi, siap lanjut ke WebSocket
     }
 
     Serial.println("[AUTH] Token KOSONG. Memulai mode Polling...");
+
+    // Tampilkan ID perangkat terus-menerus di layar selama menunggu klaim
+    String deviceId = getDeviceId();
+    showPersistentDialog("ID Perangkat: " + deviceId + " Belum di klaim. Klaim di dashboard!");
 
     const String pollUrl = buildPollUrl();
 
@@ -134,7 +141,13 @@ void initAuth()
 
         if (apiKey.isEmpty())
         {
-            delay(RinchanConfig::Auth::POLL_INTERVAL_MS);
+            // ✨ Non-blocking delay: Izinkan tombol fisik (termasuk tombol power) tetap dicek
+            unsigned long startWait = millis();
+            while (millis() - startWait < RinchanConfig::Auth::POLL_INTERVAL_MS)
+            {
+                handleButtonLoop();
+                delay(10);
+            }
         }
     }
 
@@ -186,6 +199,7 @@ void refreshToken()
                     authPrefs.putString(RinchanConfig::Auth::KEY_API, apiKey);
                     authPrefs.end();
                     Serial.println("[AUTH] AUTO-HEALING SUKSES! Token versi baru berhasil didapat.");
+                    showDialogWidget("Versi token terdeteksi berubah, mencoba memperbarui token...");
                 }
                 else
                 {

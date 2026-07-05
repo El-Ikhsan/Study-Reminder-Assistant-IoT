@@ -46,35 +46,29 @@ namespace
     bool isNoiseEnabled = true;
 
     // ✨ UPDATE Sesuai CSV Final
-    int getTempCategory(float temp)
+    int getTempCategory(int temp)
     {
-        if (temp >= 31.0f) return 1; // Panas (buruk)
-        if (temp >= 28.0f) return 2; // Hangat
-        if (temp >= 22.0f) return 3; // Sejuk (Optimal)
-        if (temp >= 16.0f) return 4; // Dingin
-        return 5;                    // Dingin Ekstrem (buruk)
+        if (temp >= 31) return 1; // Panas (buruk)
+        if (temp >= 28) return 2; // Hangat
+        if (temp >= 22) return 3; // Sejuk (Optimal)
+        if (temp >= 16) return 4; // Dingin
+        return 5;                 // Dingin Ekstrem (buruk)
     }
 
-    int getNoiseCategory(float noise)
+    int getNoiseCategory(int noise)
     {
-        if (noise >= 80.0f)
-            return 1; // Bising
-        if (noise >= 65.0f)
-            return 2; // Ramai
-        if (noise >= 50.0f)
-            return 3; // Normal (Optimal)
-        return 4;     // Sunyi (Optimal)
+        if (noise >= 80) return 1; // Bising
+        if (noise >= 65) return 2; // Ramai
+        if (noise >= 50) return 3; // Normal (Optimal)
+        return 4;                  // Sunyi (Optimal)
     }
 
-    int getLightCategory(float lux)
+    int getLightCategory(int lux)
     {
-        if (lux >= 700.0f)
-            return 1; // Silau
-        if (lux >= 150.0f)
-            return 2; // Terang (Optimal)
-        if (lux >= 50.0f)
-            return 3; // Redup
-        return 4;     // Gelap
+        if (lux >= 700) return 1; // Silau
+        if (lux >= 150) return 2; // Terang (Optimal)
+        if (lux >= 50) return 3;  // Redup
+        return 4;                 // Gelap
     }
 }
 
@@ -215,9 +209,13 @@ void aiSensor_loop()
     if (isnan(currentData.lightLux) || currentData.lightLux < 0)
         return;
 
-    int currentTempCat = getTempCategory(currentData.temperature);
-    int currentNoiseCat = getNoiseCategory(currentData.noiseLevel);
-    int currentLightCat = getLightCategory(currentData.lightLux);
+    int tempInt = (int)round(currentData.temperature);
+    int luxInt = (int)round(currentData.lightLux);
+    int noiseInt = (int)round(currentData.noiseLevel);
+
+    int currentTempCat = getTempCategory(tempInt);
+    int currentNoiseCat = getNoiseCategory(noiseInt);
+    int currentLightCat = getLightCategory(luxInt);
 
     bool isEventConfirmed = false;
 
@@ -413,9 +411,6 @@ void aiSensor_loop()
     // ====================================================================
     // TRIGGER AI (Selalu kirim payload lengkap, backend yang filter)
     // ====================================================================
-    int tempInt = (int)round(currentData.temperature);
-    int luxInt = (int)round(currentData.lightLux);
-    int noiseInt = (int)round((float)currentData.noiseLevel);
 
     Serial.printf("[⚡ TRIGGER AI] Kirim: Suhu=%d°C, Cahaya=%d lux, Noise=%d dB | lastCondition='%s'\n",
                   tempInt, luxInt, noiseInt, activeConditionFromAI.c_str());

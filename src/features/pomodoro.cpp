@@ -43,6 +43,7 @@ namespace
     // mendeteksinya. Ini memastikan ACK ter-flush SEBELUM timer fisik dimulai,
     // sehingga frontend dan IoT mulai dalam waktu yang hampir bersamaan.
     bool pendingTimerStart = false;
+    bool pendingTimerStop = false;
 
     // ✨ FIX BARU: Delay sebelum PHASE_REPORT awal dikirim
     // Memberi waktu backend untuk siap menerima dan mengirim teks LLM
@@ -52,7 +53,9 @@ namespace
 
     void sendPhaseReport(const String &mode, float durationMin, float remainingMin);
 
-    void startTimerForMode(const String &mode, int durationMin)
+    void startTimerForMode(const String &mode, int durationMin, bool isFirstStart = false);
+
+    void startTimerForMode(const String &mode, int durationMin, bool isFirstStart)
     {
         state.mode = mode;
         state.durationTotalSec = durationMin * 60;
@@ -67,7 +70,7 @@ namespace
 
         // ✨ FIX: SFX BLOCKING agar tidak dibunuh oleh showDialogWidget
         // saat AI merespons fase awal sesaat setelah timer dimulai
-        if (mode == "fokus")
+        if (isFirstStart)
         {
             playRinchanSoundBlocking(SND_POMO_START);
         }
@@ -207,6 +210,7 @@ void pomodoro_processCommand(const String &type, JsonObject payload)
         state.isRunning = false;
         state.sessionId = "";
         pendingTimerStart = false; // Batalkan pending start jika ada
+        pendingTimerStop = true;   // Defer blocking sound and UI to pomodoroLoop
 
         // Queue ACK segera (flush oleh wsLoop)
         JsonDocument ackDoc;
@@ -215,20 +219,24 @@ void pomodoro_processCommand(const String &type, JsonObject payload)
         String ackMsg;
         serializeJson(ackDoc, ackMsg);
         queueSendWS(ackMsg);
-
-        clearWidget();
-        forceClearDialog();
-        drawEmoji(EMOTION_IDLE);
-
-        // Non-blocking sound agar ACK bisa ter-flush dulu
-        // Dialog di-queue agar wsLoop() tidak terblokir
-        playRinchanSound(SND_POMO_CANCEL);
-        queueDialogWidget("Yah, dibatalkan...");
     }
 }
 
 void pomodoroLoop()
 {
+    if (pendingTimerStop)
+    {
+        pendingTimerStop = false;
+
+        clearWidget();
+        forceClearDialog();
+        drawEmoji(EMOTION_IDLE);
+
+        playRinchanSoundBlocking(SND_POMO_CANCEL);
+        showDialogWidget("Yah, dibatalkan...");
+        return;
+    }
+
     // ✨ DEFERRED START: Jalankan timer SETELAH ACK ter-flush oleh wsLoop()
     // Ini dipanggil di iterasi loop() berikutnya setelah CMD_START_POMODORO
     if (pendingTimerStart)
@@ -240,7 +248,7 @@ void pomodoroLoop()
         state.currentCycle = 1;
         state.lastTimerTick = millis();
 
-        startTimerForMode("fokus", state.focusDurationMin);
+        startTimerForMode("fokus", state.focusDurationMin, true);
 
         awalPhaseReadyAt = millis() + AWAL_PHASE_DELAY_MS;
         Serial.printf("[TIMER] Dimulai. PHASE_REPORT awal dikirim dalam %lu ms...\n", AWAL_PHASE_DELAY_MS);

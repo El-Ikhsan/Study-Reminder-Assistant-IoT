@@ -90,12 +90,15 @@ void initAuth()
     {
         Serial.println("[AUTH] Menghubungi server: " + pollUrl);
 
-        // --- KODE BARU UNTUK MENEMBUS HTTPS CLOUDFLARE ---
+        HTTPClient http;
+#if LOCAL_DEV_MODE
+        WiFiClient client;
+        http.begin(client, pollUrl);
+#else
         WiFiClientSecure client;
         client.setInsecure(); // Abaikan cek sertifikat SSL agar praktis
-
-        HTTPClient http;
-        http.begin(client, pollUrl); // Masukkan client ke dalam begin()
+        http.begin(client, pollUrl);
+#endif
         // --------------------------------------------------
 
         int httpCode = http.GET();
@@ -170,12 +173,17 @@ void refreshToken()
 {
     Serial.println("[AUTH] Mencurigai token basi. Mengecek server...");
 
+    HTTPClient http;
+    const String pollUrl = buildPollUrl();
+
+#if LOCAL_DEV_MODE
+    WiFiClient client;
+    http.begin(client, pollUrl);
+#else
     WiFiClientSecure client;
     client.setInsecure();
-    HTTPClient http;
-
-    const String pollUrl = buildPollUrl();
     http.begin(client, pollUrl);
+#endif
 
     int httpCode = http.GET();
     if (httpCode > 0)

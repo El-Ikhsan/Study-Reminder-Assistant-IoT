@@ -2,11 +2,10 @@
 #include "config.h"
 #include "network/auth.h"
 #include "features/pomodoro.h"
-#include "features/ai_sensor.h" // ✨ FIX: Tambahkan header ai_sensor
+#include "features/ai_sensor.h"
 #include "ui/display.h"
 #include "core/hw_manager.h"
 #include "audio/sound_manager.h"
-
 #include <WebSocketsClient.h>
 #include <ArduinoJson.h>
 #include <freertos/FreeRTOS.h>
@@ -19,10 +18,28 @@ namespace
     unsigned int wsFailCount = 0;
     SemaphoreHandle_t wsMutex = NULL;
 
-    // ✨ OUTGOING QUEUE: Pesan yang akan dikirim setelah webSocket.loop() selesai
+    // OUTGOING QUEUE: Pesan yang akan dikirim setelah webSocket.loop() selesai
     // Digunakan agar callback tidak perlu acquire mutex (mencegah deadlock)
     String pendingSendMsg = "";
     bool hasPendingSend = false;
+
+    // Helper: pilih begin() atau beginSSL() sesuai LOCAL_DEV_MODE
+    void connectWebSocket(const char *url)
+    {
+#if LOCAL_DEV_MODE
+        Serial.println("[WS] Mode LOKAL — menggunakan ws:// (tanpa SSL)");
+        webSocket.begin(
+            RinchanConfig::Backend::WS_HOST,
+            RinchanConfig::Backend::WS_PORT,
+            url);
+#else
+        Serial.println("[WS] Mode PRODUKSI — menggunakan wss:// (SSL)");
+        webSocket.beginSSL(
+            RinchanConfig::Backend::WS_HOST,
+            RinchanConfig::Backend::WS_PORT,
+            url);
+#endif
+    }
 }
 
 bool wsConnected = false;
@@ -208,7 +225,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
 
             String newToken = getApiKey();
             String fullUrl = String(RinchanConfig::Backend::WS_BASE_URL) + "?token=" + newToken;
-            webSocket.beginSSL(RinchanConfig::Backend::WS_HOST, RinchanConfig::Backend::WS_PORT, fullUrl.c_str());
+            connectWebSocket(fullUrl.c_str());
         }
         break;
 
@@ -257,9 +274,9 @@ void initWebSocket()
     String token = getApiKey();
     String fullUrl = String(RinchanConfig::Backend::WS_BASE_URL) + "?token=" + token;
 
-    Serial.println("[WS] Menghubungkan ke Backend WSS...");
+    Serial.println("[WS] Menghubungkan ke Backend...");
     webSocket.setExtraHeaders(RinchanConfig::WebSocket::USER_AGENT);
-    webSocket.beginSSL(RinchanConfig::Backend::WS_HOST, RinchanConfig::Backend::WS_PORT, fullUrl.c_str());
+    connectWebSocket(fullUrl.c_str());
     webSocket.enableHeartbeat(
         RinchanConfig::WebSocket::HEARTBEAT_INTERVAL_MS,
         RinchanConfig::WebSocket::HEARTBEAT_TIMEOUT_MS,

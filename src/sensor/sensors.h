@@ -11,8 +11,10 @@ struct SensorData
     int noiseLevel;
 };
 
-// Fungsi yang bisa diakses dari luar
+// Inisialisasi semua sensor hardware (BMP280, BH1750, INMP441)
 void initSensors();
+
+// Baca seluruh data sensor sekaligus
 SensorData readAllSensors();
 
 #endif

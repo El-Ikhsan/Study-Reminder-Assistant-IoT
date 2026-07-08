@@ -39,7 +39,7 @@ namespace
 
     String buildPollUrl()
     {
-        // ✨ GANTI Pemanggilan Config menjadi pemanggilan Fungsi
+        //  GANTI Pemanggilan Config menjadi pemanggilan Fungsi
         return String(RinchanConfig::Backend::BASE_URL) + "/api/device/poll/" + getDeviceId();
     }
 }

@@ -3,7 +3,7 @@
 #include "network/auth.h"
 #include "network/wifi.h"
 #include <Arduino.h>
-#include "driver/rtc_io.h" // ✨ WAJIB UNTUK MENGUNCI PULL-UP SAAT DEEP SLEEP
+#include "driver/rtc_io.h" // WAJIB UNTUK MENGUNCI PULL-UP SAAT DEEP SLEEP
 
 namespace
 {
@@ -13,16 +13,15 @@ namespace
 
     void enterDeepSleep()
     {
-        // ✨ FIX 1: TAHAN PROSES SAMPAI JARI MAJIKAN BENAR-BENAR DIANGKAT
+        // TAHAN PROSES SAMPAI JARI BENAR-BENAR DIANGKAT
         while (digitalRead(RinchanConfig::Pins::BUTTON_PIN) == LOW)
         {
             delay(10); // Tunggu sampai tombol dilepas (HIGH)
         }
 
         Serial.println("[SYSTEM] Masuk ke Deep Sleep. Zzz...");
-        delay(100); // Beri waktu Serial print selesai sebelum modar
+        delay(100); // Beri waktu Serial print selesai sebelum masuk deep sleep
 
-        // ✨ FIX 2: KUNCI PULL-UP INTERNAL RTC AGAR PIN TIDAK MENGAMBANG
         rtc_gpio_pullup_en((gpio_num_t)RinchanConfig::Pins::BUTTON_PIN);
         rtc_gpio_pulldown_dis((gpio_num_t)RinchanConfig::Pins::BUTTON_PIN);
 
@@ -42,7 +41,6 @@ void initButton()
     esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
     esp_reset_reason_t reset_reason = esp_reset_reason();
 
-    // ✨ FIX 3: LOGIKA LEBIH PINTAR
     // Hanya langsung tidur JIKA benar-benar baru dicolok ke listrik/powerbank
     if (reset_reason == ESP_RST_POWERON)
     {

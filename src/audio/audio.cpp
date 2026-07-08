@@ -1,11 +1,10 @@
 #include "audio.h"
 #include "config.h"
-#include <Audio.h> // Library ESP32-audioI2S
+#include <Audio.h>
 #include <LittleFS.h>
 #include <driver/i2s.h>
 #include <math.h>
 #include <string.h>
-#include "voice_recognition/wakenet.h" // Untuk setMicMuted()
 
 namespace
 {
@@ -165,9 +164,6 @@ void playAudioSFX(const char *path)
     audio.connecttoFS(LittleFS, path);
     lastSfxStartMs = now;
 
-    // 🔇 Mute mic agar suara speaker tidak terbaca sebagai kebisingan
-    setMicMuted(true);
-
     // Beri sedikit "tendangan" awal agar decoder MP3/WAV langsung memompa buffer I2S
     const unsigned long primeStart = millis();
     while (millis() - primeStart < 10UL)
@@ -202,9 +198,6 @@ void playAudioLocal(const char *path)
     isStreamReady = false;
     isSyncwordReady = false;
     audio.connecttoFS(LittleFS, path);
-
-    // 🔇 Mute mic agar suara speaker tidak terbaca sebagai kebisingan
-    setMicMuted(true);
 
     // Tunggu decoder menemukan syncword agar startup tidak patah di awal.
     const unsigned long warmupStartMs = millis();
@@ -252,8 +245,6 @@ void playAudioUrl(const String &url)
         return;
 
     Serial.println("[AUDIO] Mengunduh dan memutar: " + url);
-    // 🔇 Mute mic agar suara streaming tidak terbaca sebagai kebisingan
-    setMicMuted(true);
     // connecttohost akan otomatis memulai streaming MP3/WAV dari URL
     audio.connecttohost(url.c_str());
 }
@@ -261,14 +252,9 @@ void playAudioUrl(const String &url)
 void stopAudio()
 {
     audio.stopSong();
-    // 🔈 Unmute mic: speaker sudah berhenti, mic boleh aktif lagi
-    setMicMuted(false);
     Serial.println("[AUDIO] Pemutaran dihentikan.");
 }
 
-// ==========================================
-// 🐛 CALLBACK DEBUGGING DARI LIBRARY AUDIO
-// ==========================================
 // Fungsi-fungsi di bawah ini akan dipanggil otomatis oleh library
 // untuk memberikan informasi status ke Serial Monitor.
 
@@ -306,9 +292,6 @@ void audio_eof_mp3(const char *info)
             isTypingSfxBusy = false;
         }
     }
-
-    // 🔈 Audio selesai: unmute mic kembali
-    setMicMuted(false);
 
     Serial.print("[AUDIO END] Selesai memutar: ");
     Serial.println(info);

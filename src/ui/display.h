@@ -9,7 +9,7 @@ enum Emotion
     EMOTION_DARK,      // gelap
     EMOTION_GLARE,     // silau
     EMOTION_NOISY,     // bising
-    EMOTION_LISTENING, // mendengar (Wakenet aktif)
+    EMOTION_LISTENING, // mendengar suara
     EMOTION_SMILE,     // pemulihan / sensor membaik
     EMOTION_IDLE       // idle / standby
 };

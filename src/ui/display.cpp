@@ -44,9 +44,9 @@ namespace
 }
 
 // ==========================================
-// 0. TOP BAR: STATUS WIFI & WAKENET (MIC)
+// 0. TOP BAR: STATUS WIFI & MIC
 // ==========================================
-// Panggil ini di main.cpp setiap ada perubahan status WiFi atau WakeNet
+// Panggil ini di main.cpp setiap ada perubahan status WiFi
 static bool lastWifi = false;
 static bool lastMic = false;
 static String lastTimeStr = "";

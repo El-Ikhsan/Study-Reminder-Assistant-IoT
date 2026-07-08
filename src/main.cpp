@@ -13,7 +13,6 @@
 #include "ui/display.h"
 #include "audio/sound_manager.h"
 #include <TFT_eSPI.h>
-#include "voice_recognition/wakenet.h"
 
 String globalSensorAlert = "";
 namespace
@@ -67,7 +66,7 @@ void setup()
     initAudio();
     setVolumePercent(getSavedVolume());
 
-    initSensors();
+    initSensors(); // Inisialisasi BMP280, BH1750, dan INMP441 (task mikrofon)
     aiSensor_init();
 
     // 2. RENDER VISUAL
@@ -115,13 +114,12 @@ void setup()
     // 7. RUNTIME READY
     if (isRuntimeReady())
     {
-        drawTopBar(true, true, getRealTime(), "");
+        drawTopBar(true, false, getRealTime(), "");
 
         drawEmoji(EMOTION_IDLE);
         showDialogWidget("Sistem Siap! Menunggu Perintah.");
 
         initWebSocket();
-        initWakeNet();
 
         bootMessageTimer = millis();
         clearBootMessage = true;
@@ -147,21 +145,8 @@ void loop()
         playDisplayAnimation();
 
         // ==========================================
-        // ✨ LOGIKA SAKLAR MIC & TOP BAR
+        // ✨ LOGIKA TOP BAR
         // ==========================================
-        bool isFocusMode = (pomodoro_isRunning() && pomodoro_getCurrentMode() == "fokus");
-        // Kita tidak bisa langsung akses currentWidget, jadi deteksi dari cancelCurrentDialog
-        // atau anggap aman jika tidak ada interupsi audio panjang.
-        // Cara paling aman: Cek jika speaker I2S sedang bersuara (SFX ketik / Lagu).
-        bool isSpeakerLoud = audio_isPlaying();
-
-        bool shouldWakeNetBeActive = (!isFocusMode && !isSpeakerLoud);
-
-        // WakeNet dimatikan saat fokus atau speaker aktif, tapi mic tetap hidup.
-        setWakeNetEnabled(shouldWakeNetBeActive);
-
-        // Mic di-mute hanya saat speaker aktif untuk hindari feedback.
-        setMicMuted(isSpeakerLoud);
 
         // Update Layar Top Bar (Setiap 1 detik)
         unsigned long currentMillis = millis();
@@ -178,8 +163,8 @@ void loop()
                 alertTxt = globalSensorAlert;
             }
 
-            // Render ke layar (Wifi, Mic, Jam, Teks Peringatan)
-            drawTopBar(isWiFiConnected(), shouldWakeNetBeActive, getRealTime(), alertTxt);
+            // Render ke layar (Wifi, Jam, Teks Peringatan)
+            drawTopBar(isWiFiConnected(), false, getRealTime(), alertTxt);
         }
 
         // ==========================================

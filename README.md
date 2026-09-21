@@ -2,11 +2,11 @@
 
 <div align="center">
   <p><em>Other repositories in this project:</em></p>
-  <h3>
-    <a href="https://github.com/El-Ikhsan/Study-Reminder-Assistant">Backend API</a>
+  <h4>
+    <a href="https://github.com/El-Ikhsan/Study-Reminder-Assistant">Backend</a>
     <br>
     <a href="https://github.com/El-Ikhsan/Study-Reminder-Assistant-Frontend">Frontend</a>
-  </h3>
+  </h4>
 </div> 
 
 <div align="center">
@@ -26,9 +26,12 @@
 
 <div align="center">
  
-[![Repo Size](https://img.shields.io/github/repo-size/El-Ikhsan/Rinchan-IOT?style=flat-square&color=blue)](https://github.com/El-Ikhsan/Rinchan-IOT)
-[![GitHub Issues](https://img.shields.io/github/issues/El-Ikhsan/Rinchan-IOT?style=flat-square&color=orange)](https://github.com/El-Ikhsan/Rinchan-IOT/issues)
+[![Repo Size](https://img.shields.io/github/repo-size/El-Ikhsan/Study-Reminder-Assistant-IoT?style=flat-square&color=blue)](https://github.com/El-Ikhsan/Study-Reminder-Assistant-IoT)
+[![GitHub Issues](https://img.shields.io/github/issues/El-Ikhsan/Study-Reminder-Assistant-IoT?style=flat-square&color=orange)](https://github.com/El-Ikhsan/Study-Reminder-Assistant-IoT/issues)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+![C++](https://img.shields.io/badge/C%2B%2B-00599C.svg?style=flat-square&logo=cplusplus&logoColor=white)
+![Arduino](https://img.shields.io/badge/Arduino-00979D.svg?style=flat-square&logo=arduino&logoColor=white)
+![PlatformIO](https://img.shields.io/badge/PlatformIO-F5822A.svg?style=flat-square&logo=platformio&logoColor=white)
 
 </div>
 

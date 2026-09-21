@@ -37,6 +37,9 @@
 
 ## Showcase
 
+<img  alt="booting" src="https://github.com/user-attachments/assets/c749b4bf-9e51-4c30-b997-9c6424bc4ab5" />
+<img  alt="wiring-iot" src="https://github.com/user-attachments/assets/5b034261-5dc1-4506-a44d-c486b1e394af" />
+
 ## What is
 
 Study Reminder Assistant (Rinchan) is an intelligent study companion system combining Pomodoro time management, environmental IoT sensor monitoring (temperature, light, and noise), and AI-driven interactions. This repository contains the **Firmware IoT**, running on an ESP32-S3 microcontroller to collect environmental telemetry, render real-time facial expressions on a TFT display, play audio cues, and communicate seamlessly with the backend via WebSockets.
